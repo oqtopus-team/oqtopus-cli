@@ -176,3 +176,10 @@ Stop order: reverse of start order.
 - **uv version pin**: The project uses uv `0.10.9` (`.uv-version`). If uv commands fail, ensure the correct version is installed.
 - **Python version**: Must be Python 3.13. If `uv sync` fails due to version mismatch, check the `.python-version` file.
 - **Markdown linting scope**: `pymarkdownlnt` only scans `docs/` (per `Makefile`). Files outside `docs/` (e.g., `README.md`) are not linted automatically.
+
+## Commit and PR conventions
+
+- Use Conventional Commits style for all commit messages.
+- Follow the commit message instructions in `.github/instructions/commit-message.instructions.md`.
+- Follow the Pull Request title and description instructions in `.github/instructions/pull-request-description.instructions.md`.
+- When creating a Pull Request, follow the sections defined in `.github/pull_request_template.md`.
