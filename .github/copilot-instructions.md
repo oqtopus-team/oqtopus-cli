@@ -19,6 +19,8 @@ oqtopus-cli/
 ├── pyproject.toml           # Python project (docs tooling only, no Python runtime code)
 ├── mkdocs.yml               # MkDocs site configuration
 ├── Makefile                 # Developer workflow commands
+├── .python-version          # Pins Python version (3.13)
+├── .uv-version              # Pins uv version (0.10.9)
 ├── .github/
 │   ├── workflows/labeler.yaml           # Auto-labels PRs from commit prefix
 │   ├── instructions/                    # Copilot instruction fragments
@@ -109,7 +111,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 - **type**: `feat | fix | docs | style | refactor | test | ci | chore`
-- **scope**: `api | ui | docs | infra | repo` (omit if unclear)
+- **scope**: `cli | docs | infra | repo` (omit if unclear)
 - Max 72 characters
 - No emojis, no trailing period
 - Append `(#123)` if there is a related issue
