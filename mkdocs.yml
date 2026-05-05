@@ -1,0 +1,64 @@
+site_name: "OQTOPUS CLI"
+site_description: "Command Line Interface (CLI) tool for OQTOPUS ecosystem"
+repo_name: oqtopus-cli
+repo_url: "https://github.com/oqtopus-team/oqtopus-cli"
+
+nav:
+  - Home: index.md
+  - Usage:
+      - Installation: usage/installation.md
+      - Quick Start: usage/quick-start.md
+      - Backend Environment: usage/backend-environment.md
+      - Configuration: usage/configuration.md
+      - Managing Backend Components: usage/backend-components.md
+      - Starting and Stopping Services: usage/lifecycle.md
+      - Device Status: usage/device-status.md
+      - Shell Completion: usage/shell-completion.md
+      - Troubleshooting: usage/troubleshooting.md
+      - Command Reference: usage/command-reference.md
+  - Developer Guidelines:
+      - Development Flow: developer_guidelines/development_flow.md
+      - Setup Development Environment: developer_guidelines/setup.md
+      - How to Contribute: CONTRIBUTING.md
+      - Code of Conduct: "https://github.com/oqtopus-team/.github/blob/main/CODE_OF_CONDUCT.md"
+      - Security: "https://github.com/oqtopus-team/.github/blob/main/SECURITY.md"
+
+theme:
+  name: material
+  palette:
+    primary: "indigo"
+    accent: "indigo"
+  font:
+    text: "Roboto"
+    code: "Roboto Mono"
+  logo: asset/oqtopus-black_symbol.svg
+  favicon: asset/favicon.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - toc.follow
+    - content.code.copy
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+extra_css:
+  - "https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"
+  - "css/custom.css"

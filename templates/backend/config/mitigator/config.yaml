@@ -1,0 +1,3 @@
+proto: # Settings for gRPC server
+  max_workers: ${MITIGATOR_WORKERS} # Maximum number of workers
+  address: "${MITIGATOR_ADDRESS}" # Address and port for RPCs

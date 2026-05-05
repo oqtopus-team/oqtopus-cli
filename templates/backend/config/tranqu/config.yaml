@@ -1,0 +1,3 @@
+proto:
+  max_workers: ${TRANQU_WORKERS, 10}
+  address: ${TRANQU_ADDRESS, "localhost:52020"}

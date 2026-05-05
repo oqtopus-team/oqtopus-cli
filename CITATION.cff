@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "OQTOPUS CLI"
+authors:
+  - name: "OQTOPUS Team"
+version: 1.0.0
+date-released: 2026-05-05
+license: Apache-2.0
+contact:
+  - email: oqtopus-team@googlegroups.com
+    name: "OQTOPUS mailing list"
+repository-code: "https://github.com/oqtopus-team/oqtopus-cli"
+url: "https://oqtopus-cli.readthedocs.io/"
