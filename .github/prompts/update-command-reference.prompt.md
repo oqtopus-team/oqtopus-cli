@@ -1,40 +1,64 @@
+---
+name: update-command-reference
+description: Update CLI command reference documentation from the current implementation
+---
+
 # Update command reference
 
-Update `docs/usage/command-reference.md` to reflect the current state of `bin/oqtopus`.
+Update the command reference documentation based on the current CLI implementation.
 
-## Source of truth
+The goal is to keep the public documentation consistent with the implemented CLI behavior.
+Do not invent commands, options, or behavior that are not implemented.
 
-- **Implementation**: `bin/oqtopus` — the `usage_*` functions define the authoritative command signatures
-- **Documentation target**: `docs/usage/command-reference.md`
+## Scope
 
-Do not document commands, flags, or behaviors that are not implemented in `bin/oqtopus`.
+Check the current CLI implementation and update documentation for:
 
-## What to check
+- Available top-level commands
+- Subcommands
+- Options and arguments
+- Required and optional parameters
+- Default behavior
+- Exit behavior if relevant
+- User-facing error messages if relevant
+- Example usage
+- Differences between README and detailed documentation
 
-### Commands and subcommands
+## Documentation rules
 
-- Top-level commands (`init`, `backend`, `completion`, `version`, `help`)
-- `backend` subcommands (`install`, `versions`, `uninstall`, `update`, `start`, `stop`, `restart`, `status`, `device-status`, `info`)
-- All valid values for enumerated arguments (component names, service names, device status values)
+Follow these rules:
 
-### Flags and options
+- Keep the documentation concise and user-oriented.
+- Use clear English.
+- Prefer practical examples over long explanations.
+- Use fenced code blocks with language identifiers, such as `bash`.
+- Do not document planned behavior unless it already exists.
+- Do not document commands that are not implemented.
+- If the implementation is ambiguous, add a short note instead of guessing.
+- Keep command names and option names exactly as implemented.
 
-- `--template backend` for `init`
-- `--foreground` for `backend start` (single service only)
-- Any new flags added to `bin/oqtopus`
+## Files to check
 
-### Behavior notes worth documenting
+Check these files if they exist:
 
-- `install all` installs the latest stable release of each component independently
-- `versions` marks the current `.metadata` binding with `*` and locally available releases with `(installed)` when run inside a backend environment
-- `--foreground` is only valid for a single service target, not `all`
-- `uninstall` removes the release directory without checking cross-environment references
-- Service start/stop order (start: `gateway → tranqu → mitigator → estimator → combiner → sse_engine → core`; stop: reverse)
+- `bin/oqtopus`
+- `scripts/*.sh`
+- `README.md`
+- `docs/**/*.md`
+- `mkdocs.yml`
 
-## Style rules
+## Output format
 
-- Use fenced `bash` code blocks for all command examples
-- Keep descriptions concise and user-oriented (one sentence per command is enough)
-- Group commands under the same headings as the current document
-- Do not add a heading for every individual flag — fold flags into their parent command section
-- Run `make docs-lint` after editing to verify Markdown formatting
+Return the result in this format:
+
+1. Implementation summary
+   - Summarize the commands and options found in the current implementation.
+
+2. Documentation changes
+   - List the documentation files that should be updated.
+
+3. Proposed documentation patch
+   - Provide a focused patch or replacement text.
+
+4. Gaps or ambiguities
+   - List any behavior that is unclear from the implementation.

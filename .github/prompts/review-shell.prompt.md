@@ -1,43 +1,68 @@
+---
+name: review-shell
+description: Review Bash script changes for safety, portability, and CLI behavior
+---
+
 # Review shell script changes
 
-Review the shell script changes in this repository (`bin/oqtopus`, `scripts/install.sh`).
+Review the current shell script changes in this repository.
 
-## Safety and correctness
+This repository currently uses Bash scripts for the CLI implementation.
+Focus on practical issues that may affect correctness, portability, maintainability,
+or user experience.
 
-- Every script must start with `set -euo pipefail`
-- Variables must be quoted; use `"${var}"` rather than bare `$var`
-- Always use `need_command <tool>` before invoking any external command
-- Use `die()` for fatal errors, `warn()` for non-fatal warnings, `log()` for informational output — never write to stdout/stderr directly
-- Avoid `eval`, `source`-ing untrusted input, or unvalidated external data
+## Review focus
 
-## Portability
+Check the following points:
 
-- Target both Linux (glibc) and macOS (BSD userland)
-- Avoid GNU-only flags (e.g., `sed -i ''` vs `sed -i`)
-- Use `command -v` instead of `which`
-- Prefer `printf` over `echo` for portability
+- Bash safety
+  - Keep `set -euo pipefail` where appropriate.
+  - Quote variables unless word splitting is intentional.
+  - Handle unset variables and missing arguments safely.
+  - Avoid unsafe `eval`, unquoted command substitution, and fragile globbing.
 
-## Structure and readability
+- Error handling
+  - Use existing helper functions such as `die`, `warn`, `log`, or similar if available.
+  - Return clear error messages for user mistakes.
+  - Preserve useful exit codes.
+  - Do not hide failures from install/start/stop/status commands.
 
-- Group related logic into named functions with clear, single responsibilities
-- Keep section boundaries marked with `# ---` comment dividers matching the existing style
-- Avoid duplicating logic that already exists in a helper function
-- New constants (repos, service lists, order arrays) belong at the top of `bin/oqtopus` alongside existing ones
+- Linux/macOS compatibility
+  - Avoid GNU-only options unless already used intentionally.
+  - Be careful with `sed`, `readlink`, `realpath`, `mktemp`, and path handling.
+  - Avoid assumptions about the user's shell environment.
 
-## Behavior consistency
+- CLI behavior consistency
+  - Keep command names, subcommands, options, and messages consistent.
+  - Check install/start/stop/status behavior.
+  - Check whether help text should be updated.
+  - Do not suggest commands that are not implemented.
 
-- `start`, `stop`, `restart` must follow the defined service order:
-  - Start: `gateway → tranqu → mitigator → estimator → combiner → sse_engine → core`
-  - Stop: reverse of start order
-- `status` output format must remain consistent with the existing implementation
-- Every new subcommand must have a corresponding `usage_*` function and be listed in the relevant `usage_*` help text
-- Error messages must be actionable (tell the user what to do, not just what went wrong)
+- Maintainability
+  - Prefer small functions with clear responsibilities.
+  - Avoid duplicated logic.
+  - Keep changes minimal and easy to review.
+  - Preserve the current Bash-based implementation unless the user asks for a rewrite.
 
-## Documentation
+- Documentation impact
+  - Point out whether README, command reference, or usage docs should be updated.
 
-- If a new command, flag, or behavior is added or changed, note whether `docs/usage/command-reference.md` also needs updating
-- If install or setup steps change, check `docs/usage/` for affected pages
+## Output format
 
-## Review style
+Return the review in this format:
 
-Point out only real issues. Suggest minimal, targeted changes — do not propose full rewrites.
+1. Summary
+   - Briefly summarize whether the change looks safe.
+
+2. Must fix
+   - List correctness, safety, or portability issues that should be fixed before merging.
+
+3. Should consider
+   - List maintainability or UX improvements.
+
+4. Documentation updates
+   - List documentation files that should be updated, if any.
+
+5. Suggested patch
+   - Provide small patches only when they are clearly useful.
+   - Do not rewrite the entire script unless explicitly asked.
