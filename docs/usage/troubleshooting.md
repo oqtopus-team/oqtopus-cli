@@ -49,6 +49,14 @@ oqtopus backend install all
 
 Install and start Docker, then run the command again.
 
+If you need to finish installation before Docker is available, use
+`--skip-sse-build` and build the image later:
+
+```bash
+oqtopus backend install engine --skip-sse-build
+oqtopus backend build sse-runtime
+```
+
 ## `uv` Is Required
 
 Backend components are synchronized and launched with `uv`.

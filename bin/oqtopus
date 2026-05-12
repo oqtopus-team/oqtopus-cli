@@ -81,6 +81,7 @@ Usage:
 
 Commands:
   install         Install backend component releases.
+  build           Build backend runtime artifacts.
   versions        List available component versions.
   uninstall       Remove an installed release.
   update          Install the latest release of a component.
@@ -97,8 +98,15 @@ EOF
 usage_backend_install() {
   cat <<'EOF'
 Usage:
-  oqtopus backend install <engine|tranqu|gateway> [version]
-  oqtopus backend install all
+  oqtopus backend install <engine|tranqu|gateway> [version] [--skip-sse-build]
+  oqtopus backend install all [--skip-sse-build]
+EOF
+}
+
+usage_backend_build() {
+  cat <<'EOF'
+Usage:
+  oqtopus backend build sse-runtime
 EOF
 }
 
@@ -483,7 +491,9 @@ build_sse_runtime() {
   image=$(load_env_var_from_config SSE_CONTAINER_IMAGE) || die "SSE_CONTAINER_IMAGE is missing from config/.env."
   uid=$(id -u)
   gid=$(id -g)
+  log "Building sse_runtime Docker image for engine $version as $image"
   docker build "$runtime_dir" -t "$image" --build-arg "UID=$uid" --build-arg "GID=$gid" || die "failed to build sse_runtime Docker image."
+  log "Built sse_runtime Docker image: $image"
 }
 
 component_install_complete() {
@@ -517,6 +527,7 @@ sync_component_environment() {
 install_component() {
   local component=$1
   local version=${2:-}
+  local skip_sse_build=${3:-false}
   local repo target_dir binding_key
   is_in_list "$component" "${INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
   need_command uv
@@ -538,7 +549,9 @@ install_component() {
     download_and_extract_release "$component" "$version" "$target_dir"
     sync_component_environment "$component" "$version" "$target_dir"
   fi
-  if [[ "$component" == "engine" ]]; then
+  if [[ "$component" == "engine" && "$skip_sse_build" == "true" ]]; then
+    log "Skipping sse_runtime Docker image build for engine $version."
+  elif [[ "$component" == "engine" ]]; then
     build_sse_runtime "$version"
   fi
   metadata_set "$binding_key" "$version"
@@ -629,18 +642,53 @@ cmd_backend_install() {
   fi
   validate_backend_env
   local component=${1:-}
-  local version=${2:-}
+  local version=""
+  local skip_sse_build=false
+  local arg
   [[ -n "$component" ]] || { usage_backend_install; exit 1; }
+  shift
+  for arg in "$@"; do
+    case "$arg" in
+      --skip-sse-build)
+        skip_sse_build=true
+        ;;
+      -*)
+        die "unknown install option: $arg"
+        ;;
+      *)
+        [[ -z "$version" ]] || { usage_backend_install; exit 1; }
+        version="$arg"
+        ;;
+    esac
+  done
   if [[ "$component" == "all" ]]; then
-    [[ -z "$version" && $# -eq 1 ]] || die "oqtopus backend install all does not accept a version argument."
+    [[ -z "$version" ]] || die "oqtopus backend install all does not accept a version argument."
     local item
     for item in "${INSTALL_COMPONENTS[@]}"; do
-      install_component "$item"
+      install_component "$item" "" "$skip_sse_build"
     done
     return
   fi
-  [[ $# -le 2 ]] || { usage_backend_install; exit 1; }
-  install_component "$component" "$version"
+  if [[ "$skip_sse_build" == "true" && "$component" != "engine" ]]; then
+    die "--skip-sse-build is only supported for 'engine' and 'all'."
+  fi
+  install_component "$component" "$version" "$skip_sse_build"
+}
+
+cmd_backend_build() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_backend_build
+    return
+  fi
+  validate_backend_env
+  local target=${1:-}
+  local version target_dir
+  [[ "$target" == "sse-runtime" && $# -eq 1 ]] || { usage_backend_build; exit 1; }
+  version=$(metadata_get engine_version 2>/dev/null) || die "engine is not installed in this backend environment."
+  target_dir="$INSTALL_ROOT/engine-${version}"
+  [[ -d "$target_dir" ]] || die "installed engine release not found: $target_dir"
+  component_install_complete engine "$target_dir" || die "engine $version is not completely installed in this backend environment."
+  build_sse_runtime "$version"
 }
 
 cmd_backend_update() {
@@ -975,6 +1023,10 @@ cmd_backend() {
       shift
       cmd_backend_install "$@"
       ;;
+    build)
+      shift
+      cmd_backend_build "$@"
+      ;;
     versions)
       shift
       cmd_backend_versions "$@"
@@ -1036,7 +1088,11 @@ _oqtopus()
     backend)
       case "${COMP_WORDS[2]}" in
         install)
-          COMPREPLY=( $(compgen -W "engine tranqu gateway all help --help" -- "$cur") )
+          COMPREPLY=( $(compgen -W "engine tranqu gateway all --skip-sse-build help --help" -- "$cur") )
+          return 0
+          ;;
+        build)
+          COMPREPLY=( $(compgen -W "sse-runtime help --help" -- "$cur") )
           return 0
           ;;
         versions)
@@ -1060,7 +1116,7 @@ _oqtopus()
           return 0
           ;;
         *)
-          COMPREPLY=( $(compgen -W "install versions uninstall update start stop restart status device-status info help --help" -- "$cur") )
+          COMPREPLY=( $(compgen -W "install build versions uninstall update start stop restart status device-status info help --help" -- "$cur") )
           return 0
           ;;
       esac
@@ -1088,10 +1144,11 @@ completion_zsh() {
 #compdef oqtopus
 
 _oqtopus() {
-  local -a commands backend_commands install_components update_components start_services services device_status shells templates
+  local -a commands backend_commands install_components build_targets update_components start_services services device_status shells templates
   commands=(init backend completion version help --help --version)
-  backend_commands=(install versions uninstall update start stop restart status device-status info help --help)
-  install_components=(engine tranqu gateway all help --help)
+  backend_commands=(install build versions uninstall update start stop restart status device-status info help --help)
+  install_components=(engine tranqu gateway all --skip-sse-build help --help)
+  build_targets=(sse-runtime help --help)
   update_components=(engine tranqu gateway help --help)
   start_services=(core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help)
   services=(core sse_engine mitigator estimator combiner tranqu gateway all help --help)
@@ -1103,6 +1160,7 @@ _oqtopus() {
     backend)
       case $words[3] in
         install) compadd -- $install_components ;;
+        build) compadd -- $build_targets ;;
         versions|update|uninstall) compadd -- $update_components ;;
         start) compadd -- $start_services ;;
         stop|restart) compadd -- $services ;;
@@ -1125,8 +1183,9 @@ completion_fish() {
 complete -c oqtopus -f -n "__fish_use_subcommand" -a "init backend completion version help --help --version"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from init" -a "--template backend cloud help --help"
-complete -c oqtopus -f -n "__fish_seen_subcommand_from backend" -a "install versions uninstall update start stop restart status device-status info help --help"
-complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from install" -a "engine tranqu gateway all help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend" -a "install build versions uninstall update start stop restart status device-status info help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from install" -a "engine tranqu gateway all --skip-sse-build help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from build" -a "sse-runtime help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from versions update uninstall" -a "engine tranqu gateway help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from start" -a "core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from stop restart" -a "core sse_engine mitigator estimator combiner tranqu gateway all help --help"

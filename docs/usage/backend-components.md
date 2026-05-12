@@ -123,6 +123,29 @@ or:
 oqtopus backend install all
 ```
 
+To install backend components without building the Docker image, use:
+
+```bash
+oqtopus backend install engine --skip-sse-build
+```
+
+or:
+
+```bash
+oqtopus backend install all --skip-sse-build
+```
+
+The flag skips only the `sse_runtime` Docker build. The engine release is still
+installed, its uv environments are still prepared, and `.metadata` is still
+updated.
+
+To build the image later for the engine version currently bound in `.metadata`,
+run:
+
+```bash
+oqtopus backend build sse-runtime
+```
+
 The Docker build uses `SSE_CONTAINER_IMAGE` from `config/.env`. The build
 arguments `UID` and `GID` are set automatically from the current user with
 `id -u` and `id -g`; they do not need to be written in `config/.env`.

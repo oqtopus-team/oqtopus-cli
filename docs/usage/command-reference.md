@@ -35,14 +35,20 @@ expanded paths.
 
 ```bash
 oqtopus backend versions <engine|tranqu|gateway>
-oqtopus backend install <engine|tranqu|gateway> [version]
-oqtopus backend install all
+oqtopus backend install <engine|tranqu|gateway> [version] [--skip-sse-build]
+oqtopus backend install all [--skip-sse-build]
+oqtopus backend build sse-runtime
 oqtopus backend update <engine|tranqu|gateway>
 oqtopus backend uninstall <engine|tranqu|gateway> <version>
 ```
 
 `install all` installs the latest stable `engine`, `tranqu`, and `gateway`
 releases independently.
+
+`install engine` and `install all` build the `sse_runtime` Docker image by
+default. Use `--skip-sse-build` to defer only that Docker build, then run
+`backend build sse-runtime` later to build the image for the engine version
+bound in `.metadata`.
 
 `versions` lists available stable versions from remote GitHub tags and does not
 require a backend environment. When run inside a backend environment, it also
