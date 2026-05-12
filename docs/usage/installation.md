@@ -63,3 +63,18 @@ oqtopus backend install all
 
 The Docker image build can take several minutes, especially the first time it
 runs or after Docker cache cleanup.
+
+To defer only this Docker image build during installation, use
+`--skip-sse-build`:
+
+```bash
+oqtopus backend install engine --skip-sse-build
+oqtopus backend install all --skip-sse-build
+```
+
+After the engine is installed, build the image for the engine version recorded
+in `.metadata` with:
+
+```bash
+oqtopus backend build sse-runtime
+```
