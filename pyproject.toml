@@ -1,24 +1,7 @@
 [project]
 name = "oqtopus-cli"
 version = "1.0.0"
-description = "Documentation for the OQTOPUS CLI"
-readme = "README.md"
-license = "Apache-2.0"
-authors = [{ name = "oqtopus-team", email = "oqtopus-team@googlegroups.com" }]
-keywords = []
-classifiers = [
-  "Development Status :: 5 - Production/Stable",
-  "License :: OSI Approved :: Apache Software License",
-  "Intended Audience :: Developers",
-  "Intended Audience :: Science/Research",
-  "Topic :: Scientific/Engineering",
-  "Topic :: Scientific/Engineering :: Physics",
-]
 requires-python = ">=3.13,<4.0"
-
-[project.urls]
-documentation = "https://oqtopus-cli.readthedocs.io/"
-repository = "https://github.com/oqtopus-team/oqtopus-cli"
 
 [dependency-groups]
 docs = [
