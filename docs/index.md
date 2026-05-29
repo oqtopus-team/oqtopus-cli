@@ -17,16 +17,20 @@ stop, and restart services, inspect status, and clean up unused installations.
 It is designed to make OQTOPUS backend operation feel closer to familiar
 developer tools such as package managers and service managers, while keeping
 the underlying configuration files available for users who need to edit them.
+The CLI itself can be installed with a single command.
 
 With OQTOPUS CLI, users can:
 
 - create a backend environment from the official template;
 - install and update backend components such as `engine`, `tranqu`, and
-  `gateway`;
+  `gateway` directly from their GitHub releases;
 - start, stop, and restart managed backend services including `core`, `sse_engine`,
   `mitigator`, `estimator`, `combiner`, `tranqu`, and `gateway`;
 - check process status and backend environment information;
-- keep installed component versions isolated under the local data directory;
+- keep installed component releases in a shared local data directory so that
+  multiple environments reuse the same installation without duplication;
+- manage per-environment configuration files separately from the shared
+  component installations;
 - prepare runtime directories such as logs, PID files, and `sse_work` for local
   execution.
 
