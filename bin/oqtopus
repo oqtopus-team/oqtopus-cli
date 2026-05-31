@@ -898,7 +898,9 @@ start_service() {
   if [[ -f "$pid_file" ]]; then
     pid=$(cat "$pid_file")
     if pid_alive "$pid"; then
-      die "cannot start '$service'. The component appears to be already running (PID $pid)."
+      release_service_start_lock
+      log "$service is already running (PID $pid); skipping."
+      return 0
     fi
     rm -f "$pid_file"
   fi
