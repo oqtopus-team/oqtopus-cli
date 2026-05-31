@@ -105,11 +105,18 @@ oqtopus backend start all
 
 ## Service Appears Already Running
 
-If a PID file exists and the recorded process is alive, `start` fails to avoid
-starting a duplicate service.
+If a PID file exists and the recorded process is alive, `start` skips that
+service and logs a message such as:
 
-If another `start` command is already launching the same service, `start` also
-fails before creating a duplicate process.
+```text
+core is already running (PID 12345); skipping.
+```
+
+This means `start all` is safe to run at any time: services already running
+are skipped and the rest are started normally.
+
+If another `start` command is already launching the same service, `start` fails
+before creating a duplicate process.
 
 Check status:
 
