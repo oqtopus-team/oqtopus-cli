@@ -45,6 +45,15 @@ To see available versions before installing a specific component version, use:
 oqtopus backend versions engine
 ```
 
+For development or testing pre-release features, you can install a component
+directly from a GitHub branch instead of a release:
+
+```bash
+oqtopus backend install engine branch:develop
+```
+
+See [Managing Backend Components](./backend-components.md) for details.
+
 ## Start Services
 
 ```bash

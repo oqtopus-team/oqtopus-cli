@@ -98,7 +98,7 @@ EOF
 usage_backend_install() {
   cat <<'EOF'
 Usage:
-  oqtopus backend install <engine|tranqu|gateway> [version] [--skip-sse-build]
+  oqtopus backend install <engine|tranqu|gateway> [version|branch:<branch>] [--skip-sse-build]
   oqtopus backend install all [--skip-sse-build]
 EOF
 }
@@ -121,6 +121,7 @@ usage_backend_uninstall() {
   cat <<'EOF'
 Usage:
   oqtopus backend uninstall <engine|tranqu|gateway> <version>
+  oqtopus backend uninstall <engine|tranqu|gateway> branch:<branch>
 EOF
 }
 
@@ -223,6 +224,16 @@ metadata_set() {
   mv "$tmp" "$file"
 }
 
+metadata_unset() {
+  local key=$1
+  local file=${2:-.metadata}
+  local tmp
+  [[ -f "$file" ]] || return 0
+  tmp=$(mktemp "${file}.tmp.XXXXXX")
+  grep -v "^${key}=" "$file" > "$tmp" || true
+  mv "$tmp" "$file"
+}
+
 line_list_contains() {
   local needle=$1
   local values=$2
@@ -261,8 +272,20 @@ component_repo() {
   esac
 }
 
+component_repo_url() {
+  printf 'https://github.com/%s.git\n' "$(component_repo "$1")"
+}
+
 component_binding_key() {
   printf '%s_version\n' "$1"
+}
+
+is_branch_version() {
+  [[ "$1" == branch:* ]]
+}
+
+branch_version_ref() {
+  printf '%s\n' "${1#branch:}"
 }
 
 service_component() {
@@ -405,43 +428,52 @@ list_component_versions() {
     | unique
     | map(
         . as $tag
-        | if test("^v[0-9]+\\.[0-9]+\\.[0-9]+$") then
+        | if ($tag | startswith("branch:")) then
+            {tag: $tag, branch: true, stable: false, major: -1, minor: -1, patch: -1}
+          elif test("^v[0-9]+\\.[0-9]+\\.[0-9]+$") then
             capture("^v(?<major>[0-9]+)\\.(?<minor>[0-9]+)\\.(?<patch>[0-9]+)$")
             | {
                 tag: $tag,
+                branch: false,
                 stable: true,
                 major: (.major | tonumber),
                 minor: (.minor | tonumber),
                 patch: (.patch | tonumber)
               }
           else
-            {tag: $tag, stable: false, major: -1, minor: -1, patch: -1}
+            {tag: $tag, branch: false, stable: false, major: -1, minor: -1, patch: -1}
           end
       )
-    | sort_by(.stable, .major, .minor, .patch, .tag)
+    | sort_by(.branch, .stable, .major, .minor, .patch, .tag)
     | reverse
     | .[].tag
   ' | while IFS= read -r version; do
-    local prefix annotation
+    local prefix annotation display_tag
     prefix="  "
     annotation=""
+    display_tag="$version"
     if [[ "$have_backend_context" -eq 1 && "${current_version:-}" == "$version" ]]; then
       prefix="* "
     fi
-    if [[ "$have_backend_context" -eq 1 ]] && line_list_contains "$version" "$installed_versions"; then
+    if [[ "$version" == branch:* ]]; then
+      display_tag="$version"
       annotation="installed"
-    fi
-    if ! line_list_contains "$version" "$remote_versions"; then
-      if [[ -n "$annotation" ]]; then
-        annotation="${annotation}, not in remote tags"
-      else
-        annotation="not in remote tags"
+    else
+      if [[ "$have_backend_context" -eq 1 ]] && line_list_contains "$version" "$installed_versions"; then
+        annotation="installed"
+      fi
+      if ! line_list_contains "$version" "$remote_versions"; then
+        if [[ -n "$annotation" ]]; then
+          annotation="${annotation}, not in remote tags"
+        else
+          annotation="not in remote tags"
+        fi
       fi
     fi
     if [[ -n "$annotation" ]]; then
-      printf '%s%s (%s)\n' "$prefix" "$version" "$annotation"
+      printf '%s%s (%s)\n' "$prefix" "$display_tag" "$annotation"
     else
-      printf '%s%s\n' "$prefix" "$version"
+      printf '%s%s\n' "$prefix" "$display_tag"
     fi
   done
 }
@@ -481,17 +513,17 @@ load_env_var_from_config() {
 }
 
 build_sse_runtime() {
-  local version=$1
+  local engine_dir=$1
   local runtime_dir dockerfile image uid gid
   need_command docker
   need_command id
-  runtime_dir="$INSTALL_ROOT/engine-${version}/sse_runtime"
+  runtime_dir="$engine_dir/sse_runtime"
   dockerfile="$runtime_dir/Dockerfile"
   [[ -f "$dockerfile" ]] || die "sse_runtime Dockerfile not found: $dockerfile"
   image=$(load_env_var_from_config SSE_CONTAINER_IMAGE) || die "SSE_CONTAINER_IMAGE is missing from config/.env."
   uid=$(id -u)
   gid=$(id -g)
-  log "Building sse_runtime Docker image for engine $version as $image"
+  log "Building sse_runtime Docker image as $image"
   docker build "$runtime_dir" -t "$image" --build-arg "UID=$uid" --build-arg "GID=$gid" || die "failed to build sse_runtime Docker image."
   log "Built sse_runtime Docker image: $image"
 }
@@ -552,7 +584,35 @@ install_component() {
   if [[ "$component" == "engine" && "$skip_sse_build" == "true" ]]; then
     log "Skipping sse_runtime Docker image build for engine $version."
   elif [[ "$component" == "engine" ]]; then
-    build_sse_runtime "$version"
+    build_sse_runtime "$target_dir"
+  fi
+  metadata_set "$binding_key" "$version"
+  log "Bound $binding_key=$version"
+}
+
+clone_and_sync_branch_component() {
+  local component=$1
+  local branch=$2
+  local skip_sse_build=${3:-false}
+  local repo_url target_dir binding_key commit_sha version
+  is_in_list "$component" "${INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
+  need_command git
+  need_command uv
+  repo_url=$(component_repo_url "$component")
+  target_dir="$ENV_ROOT/$component"
+  binding_key=$(component_binding_key "$component")
+  if [[ -e "$target_dir" ]]; then
+    log "Removing existing branch installation: $target_dir"
+    rm -rf "$target_dir"
+  fi
+  log "Cloning $component from branch '$branch'"
+  git clone --depth 1 --branch "$branch" "$repo_url" "$target_dir" || die "failed to clone $component from branch '$branch'."
+  version="branch:${branch}"
+  sync_component_environment "$component" "$version" "$target_dir"
+  if [[ "$component" == "engine" && "$skip_sse_build" == "true" ]]; then
+    log "Skipping sse_runtime Docker image build for engine branch '$branch'."
+  elif [[ "$component" == "engine" ]]; then
+    build_sse_runtime "$target_dir"
   fi
   metadata_set "$binding_key" "$version"
   log "Bound $binding_key=$version"
@@ -672,7 +732,14 @@ cmd_backend_install() {
   if [[ "$skip_sse_build" == "true" && "$component" != "engine" ]]; then
     die "--skip-sse-build is only supported for 'engine' and 'all'."
   fi
-  install_component "$component" "$version" "$skip_sse_build"
+  if [[ "$version" == branch:* ]]; then
+    local branch
+    branch=$(branch_version_ref "$version")
+    [[ -n "$branch" ]] || die "invalid branch version format: $version (expected branch:<branch>)"
+    clone_and_sync_branch_component "$component" "$branch" "$skip_sse_build"
+  else
+    install_component "$component" "$version" "$skip_sse_build"
+  fi
 }
 
 cmd_backend_build() {
@@ -685,10 +752,14 @@ cmd_backend_build() {
   local version target_dir
   [[ "$target" == "sse-runtime" && $# -eq 1 ]] || { usage_backend_build; exit 1; }
   version=$(metadata_get engine_version 2>/dev/null) || die "engine is not installed in this backend environment."
-  target_dir="$INSTALL_ROOT/engine-${version}"
+  if is_branch_version "$version"; then
+    target_dir="$ENV_ROOT/engine"
+  else
+    target_dir="$INSTALL_ROOT/engine-${version}"
+  fi
   [[ -d "$target_dir" ]] || die "installed engine release not found: $target_dir"
   component_install_complete engine "$target_dir" || die "engine $version is not completely installed in this backend environment."
-  build_sse_runtime "$version"
+  build_sse_runtime "$target_dir"
 }
 
 cmd_backend_update() {
@@ -710,13 +781,22 @@ cmd_backend_uninstall() {
   validate_backend_env
   local component=${1:-}
   local version=${2:-}
-  local target_dir
+  local target_dir binding_key
   [[ -n "$component" && -n "$version" && $# -eq 2 ]] || { usage_backend_uninstall; exit 1; }
   is_in_list "$component" "${INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
-  target_dir="$INSTALL_ROOT/${component}-${version}"
-  [[ -d "$target_dir" ]] || die "installed release not found: $target_dir"
-  rm -rf "$target_dir"
-  log "Removed $target_dir"
+  if is_branch_version "$version"; then
+    target_dir="$ENV_ROOT/$component"
+    [[ -d "$target_dir" ]] || die "branch install not found: $target_dir"
+    rm -rf "$target_dir"
+    binding_key=$(component_binding_key "$component")
+    metadata_unset "$binding_key"
+    log "Removed $target_dir"
+  else
+    target_dir="$INSTALL_ROOT/${component}-${version}"
+    [[ -d "$target_dir" ]] || die "installed release not found: $target_dir"
+    rm -rf "$target_dir"
+    log "Removed $target_dir"
+  fi
 }
 
 # -----------------------------------------------------------------------------
@@ -794,7 +874,11 @@ service_command() {
   local component version project module engine_project
   component=$(service_component "$service")
   version=$(metadata_get "$(component_binding_key "$component")") || die "cannot start '$service'. Missing ${component}_version in .metadata."
-  project="$INSTALL_ROOT/${component}-${version}"
+  if is_branch_version "$version"; then
+    project="$ENV_ROOT/$component"
+  else
+    project="$INSTALL_ROOT/${component}-${version}"
+  fi
   if [[ "$component" == "engine" ]]; then
     engine_project=$(engine_service_project "$service")
     project="$project/$engine_project"

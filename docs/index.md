@@ -34,8 +34,8 @@ With OQTOPUS CLI, users can:
 - prepare runtime directories such as logs, PID files, and `sse_work` for local
   execution.
 
-For v1.0.0, the CLI targets Linux and macOS local backend workflows. Windows
-support, cloud-oriented commands, and the future Rust implementation are planned
+For v1.0.x, the CLI targets Linux and macOS local backend workflows.
+Cloud-oriented commands and the future Rust implementation are planned
 as later work.
 
 ## Usage

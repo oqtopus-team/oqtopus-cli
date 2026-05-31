@@ -63,6 +63,30 @@ Backend components are synchronized and launched with `uv`.
 
 Install `uv` before installing or starting backend components.
 
+## `git` Is Required For Branch Install
+
+Installing a component from a branch requires `git`.
+
+If `git` is not installed, the following command fails:
+
+```bash
+oqtopus backend install engine branch:develop
+```
+
+Install `git`, then run the command again.
+
+## Branch Name Not Found
+
+If the specified branch does not exist in the remote repository, the clone
+fails with an error from `git`.
+
+Check that the branch name is correct, then run the command again with the
+correct branch name:
+
+```bash
+oqtopus backend install engine branch:<correct-branch>
+```
+
 ## Component Version Is Not Bound
 
 If a service is started before its component is installed, `start` fails.

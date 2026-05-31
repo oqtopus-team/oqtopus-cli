@@ -15,9 +15,12 @@ separate source repository:
 
 `install`, `update`, and `uninstall` operate on these component targets.
 
-Installed releases are stored under the backend installation root recorded in
+Release installs are stored under the backend installation root recorded in
 `.metadata`. Each component version has its own isolated directory and virtual
-environment.
+environment, shared across backend environments on the same machine.
+
+Branch installs clone the component repository directly into
+`$ENV_ROOT/<component>/` and are local to that environment.
 
 The installable components are not the same as the process targets used by
 `start` and `stop`. In particular, `engine` is installed as one component, but
@@ -38,8 +41,8 @@ This lists stable versions available for a component:
 
 ```text
 engine:
-* v2.0.3 (installed)
-  v2.0.2 (installed)
+  v2.0.3 (installed)
+* v2.0.2 (installed)
   v2.0.1
 ```
 
@@ -54,6 +57,16 @@ When you run it from a backend environment, the list also shows local state:
 - `*` marks the version selected by the current environment's `.metadata`.
 - `(installed)` marks a release directory already available under
   `install_root`.
+- A branch install appears at the top of the list with the format
+  `branch:<branch> (installed)`.
+
+```text
+engine:
+* branch:develop (installed)
+  v2.0.3 (installed)
+  v2.0.2
+  v2.0.1
+```
 
 This helps you choose an `uninstall` target without checking the installation
 directory manually. If a local version is not present in remote stable tags, it
@@ -97,10 +110,45 @@ oqtopus backend install engine v1.2.3
 
 The same form applies to `tranqu` and `gateway`.
 
+## Install From A Branch
+
+To install a component directly from a GitHub branch, use `branch:<branch>` as
+the version argument:
+
+```bash
+oqtopus backend install engine branch:develop
+```
+
+This is intended for development and testing of pre-release features.
+
+Unlike a release install, a branch install:
+
+- Clones the repository with `git clone --depth 1` into `$ENV_ROOT/<component>/`
+  instead of the shared installation root.
+- Always removes the existing directory and re-clones on repeated runs, so you
+  always get the latest HEAD of the branch.
+- Records the branch name in `.metadata`:
+  `engine_version=branch:develop`
+
+`oqtopus backend start` automatically uses `$ENV_ROOT/<component>/` when a
+branch version is bound, with no additional configuration required.
+
+`git` must be installed to use this feature.
+
+To remove a branch install, run:
+
+```bash
+oqtopus backend uninstall engine branch:develop
+```
+
+This removes `$ENV_ROOT/engine/` and clears the `engine_version` binding from
+`.metadata`. Unlike release uninstall, the binding is also removed because
+there is no fallback once the directory is deleted.
+
 ## Engine And `sse_runtime`
 
-Installing `engine` also builds the `sse_runtime` Docker image from the
-installed engine release. This Docker build can take several minutes,
+Installing `engine` — whether from a release or a branch — also builds the
+`sse_runtime` Docker image. This Docker build can take several minutes,
 especially the first time it runs or after Docker cache cleanup.
 
 Because `engine` is a monorepo, installing it also prepares the uv environments

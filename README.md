@@ -25,8 +25,8 @@ oqtopus backend status
 oqtopus backend stop core
 ```
 
-For v1.0.0, OQTOPUS CLI focuses on Linux and macOS local backend workflows.
-Windows support and a future Rust implementation are planned separately.
+For v1.0.x, OQTOPUS CLI focuses on Linux and macOS local backend workflows.
+A future Rust implementation are planned separately.
 
 ## Documentation
 
