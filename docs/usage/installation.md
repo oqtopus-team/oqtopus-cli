@@ -48,6 +48,8 @@ Windows is not supported yet.
 
 ## Prerequisites
 
+### Docker
+
 Install Docker before installing the `engine` backend component. OQTOPUS CLI
 builds the `sse_runtime` Docker image during:
 
@@ -78,3 +80,13 @@ in `.metadata` with:
 ```bash
 oqtopus backend build sse-runtime
 ```
+
+### Git
+
+`git` is required when installing a backend component from a branch:
+
+```bash
+oqtopus backend install engine branch:develop
+```
+
+`git` is not required for release installs.
