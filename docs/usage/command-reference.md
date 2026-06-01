@@ -10,17 +10,70 @@ oqtopus --help
 oqtopus version
 oqtopus --version
 oqtopus completion <bash|zsh|fish>
-oqtopus init <env_name> --template backend
+oqtopus init <env_name> --template <backend|cloud-local>
 oqtopus backend <command>
+oqtopus cloud-local <command>
 ```
 
 ## Environment Creation
 
 ```bash
+oqtopus init <env_name> --template cloud-local
 oqtopus init <env_name> --template backend
 ```
 
-Creates a local backend environment.
+Creates a local environment from the specified template.
+
+## Cloud-Local Component Management
+
+```bash
+oqtopus cloud-local versions <cloud|frontend|admin>
+oqtopus cloud-local install <cloud|frontend|admin> [<version>|branch:<branch>]
+oqtopus cloud-local install all
+oqtopus cloud-local update <cloud|frontend|admin>
+oqtopus cloud-local uninstall <cloud|frontend|admin> <version>
+oqtopus cloud-local uninstall <cloud|frontend|admin> branch:<branch>
+```
+
+`install all` installs the latest stable `cloud`, `frontend`, and `admin`
+releases independently.
+
+`install` accepts either a release version tag (e.g., `v1.2.3`) or a branch
+reference in the form `branch:<branch>` (e.g., `branch:develop`). Branch
+installs clone the repository into `$ENV_ROOT/<component>/`.
+
+`uninstall` with `branch:<branch>` removes `$ENV_ROOT/<component>/` and clears
+the binding from `.metadata`.
+
+## Cloud-Local Service Lifecycle
+
+```bash
+oqtopus cloud-local start <db|user|provider|admin|user_signup|worker|all>
+oqtopus cloud-local start <db|user|provider|admin|user_signup|worker> --foreground
+oqtopus cloud-local stop <db|user|provider|admin|user_signup|worker|all>
+oqtopus cloud-local restart <db|user|provider|admin|user_signup|worker|all>
+oqtopus cloud-local status
+```
+
+The `db` service is managed via Docker Compose. All other services are managed
+as local processes with PID files.
+
+`start all` starts services in the order: `db`, `worker`, `user_signup`,
+`admin`, `provider`, `user`. `stop all` uses the reverse order.
+
+`--foreground` is available only for `start` with a single service target.
+Runtime stdout and stderr are visible in the terminal; logs are written to
+`$ENV_ROOT/logs/<service>/service.log` for background starts.
+
+`status` shows Docker container names for `db` and PIDs for other services.
+
+## Cloud-Local Environment Info
+
+```bash
+oqtopus cloud-local info
+```
+
+Prints cloud-local environment metadata.
 
 ## Backend Information
 
@@ -31,7 +84,7 @@ oqtopus backend info
 Prints backend environment metadata, including component version bindings and
 expanded paths.
 
-## Component Management
+## Backend Component Management
 
 ```bash
 oqtopus backend versions <engine|tranqu|gateway>
@@ -67,7 +120,7 @@ whether another backend environment still references it. For branch installs,
 pass `branch:<branch>` as the version argument: this removes
 `$ENV_ROOT/<component>/` and also clears the binding from `.metadata`.
 
-## Service Lifecycle
+## Backend Service Lifecycle
 
 ```bash
 oqtopus backend start <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway|all>
@@ -83,7 +136,7 @@ on all managed services.
 `--foreground` is available only for `start` with a single service target. It
 keeps runtime stdout and stderr attached to the terminal for debugging.
 
-## Device Status
+## Backend Device Status
 
 ```bash
 oqtopus backend device-status show

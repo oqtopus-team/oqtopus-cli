@@ -1,5 +1,8 @@
 # Starting And Stopping Services
 
+This page describes service lifecycle for `--template backend` environments.
+For cloud-local service management, see [Starting and Stopping Cloud-Local Services](./cloud-local-lifecycle.md).
+
 OQTOPUS CLI can start, stop, restart, and inspect managed backend services from
 inside a backend environment.
 

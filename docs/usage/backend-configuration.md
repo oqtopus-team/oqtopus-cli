@@ -1,5 +1,8 @@
 # Configuration
 
+This page describes configuration for `--template backend` environments. For
+cloud-local configuration, see [Cloud-Local Configuration](./cloud-local-configuration.md).
+
 This page will describe how to configure an OQTOPUS backend environment.
 
 Configuration files are created under `config/` when you run:

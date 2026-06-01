@@ -8,35 +8,36 @@
 
 ## Overview
 
-**OQTOPUS CLI** is a command line interface for setting up and operating a local
-OQTOPUS backend environment.
+**OQTOPUS CLI** is a command line interface for setting up and operating local
+OQTOPUS environments.
 
-The CLI provides a single `oqtopus` command for the common lifecycle of a local
-backend: create an environment, install backend component releases, start,
-stop, and restart services, inspect status, and clean up unused installations.
-It is designed to make OQTOPUS backend operation feel closer to familiar
-developer tools such as package managers and service managers, while keeping
-the underlying configuration files available for users who need to edit them.
+The CLI provides a single `oqtopus` command for the common lifecycle of local
+environments: create an environment, install component releases, start, stop,
+and restart services, inspect status, and clean up unused installations.
+It is designed to make OQTOPUS operation feel closer to familiar developer
+tools such as package managers and service managers, while keeping the
+underlying configuration files available for users who need to edit them.
 The CLI itself can be installed with a single command.
+
+Two environment templates are supported:
+
+- **`cloud-local`** — for OQTOPUS Cloud running locally (`cloud`, `frontend`, `admin`)
+- **`backend`** — for the OQTOPUS backend (`engine`, `tranqu`, `gateway`)
 
 With OQTOPUS CLI, users can:
 
-- create a backend environment from the official template;
-- install and update backend components such as `engine`, `tranqu`, and
-  `gateway` directly from their GitHub releases;
-- start, stop, and restart managed backend services including `core`, `sse_engine`,
-  `mitigator`, `estimator`, `combiner`, `tranqu`, and `gateway`;
-- check process status and backend environment information;
+- create a backend or cloud-local environment from the official template;
+- install and update components directly from their GitHub releases;
+- start, stop, and restart managed services;
+- check process status and environment information;
 - keep installed component releases in a shared local data directory so that
   multiple environments reuse the same installation without duplication;
 - manage per-environment configuration files separately from the shared
   component installations;
-- prepare runtime directories such as logs, PID files, and `sse_work` for local
-  execution.
+- prepare runtime directories such as logs and PID files for local execution.
 
-For v1.0.x, the CLI targets Linux and macOS local backend workflows.
-Cloud-oriented commands and the future Rust implementation are planned
-as later work.
+Currently, the CLI targets Linux and macOS local workflows. Windows is not
+supported. A future Rust implementation is planned separately.
 
 ## Usage
 
@@ -44,18 +45,25 @@ If you are using OQTOPUS CLI for the first time, start here:
 
 1. [Installation](./usage/installation.md)
 2. [Quick Start](./usage/quick-start.md)
-3. [Backend Environment](./usage/backend-environment.md)
-4. [Configuration](./usage/configuration.md)
 
-For day-to-day operations, see:
+**Cloud-local environment:**
 
+- [Cloud-Local Environment](./usage/cloud-local-environment.md)
+- [Cloud-Local Configuration](./usage/cloud-local-configuration.md)
+- [Managing Cloud-Local Components](./usage/cloud-local-components.md)
+- [Starting and Stopping Cloud-Local Services](./usage/cloud-local-lifecycle.md)
+
+**Backend environment:**
+
+- [Backend Environment](./usage/backend-environment.md)
+- [Backend Configuration](./usage/backend-configuration.md)
 - [Managing Backend Components](./usage/backend-components.md)
-- [Starting and Stopping Services](./usage/lifecycle.md)
-- [Device Status](./usage/device-status.md)
+- [Starting and Stopping Backend Services](./usage/backend-lifecycle.md)
+- [Backend Device Status](./usage/backend-device-status.md)
+
+**Reference and tools:**
+
 - [Command Reference](./usage/command-reference.md)
-
-For shell setup and problem solving, see:
-
 - [Shell Completion](./usage/shell-completion.md)
 - [Troubleshooting](./usage/troubleshooting.md)
 

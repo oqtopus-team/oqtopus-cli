@@ -1,5 +1,8 @@
 # Backend Environment
 
+This page describes environments created with `--template backend`. For
+cloud-local environments, see [Cloud-Local Environment](./cloud-local-environment.md).
+
 An OQTOPUS backend environment is a local directory created by:
 
 ```bash

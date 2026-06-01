@@ -212,6 +212,14 @@ data_root() {
   fi
 }
 
+cloud_local_data_root() {
+  if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+    printf '%s/oqtopus/cloud-local/releases\n' "$XDG_DATA_HOME"
+  else
+    printf '%s/.local/share/oqtopus/cloud-local/releases\n' "$HOME"
+  fi
+}
+
 metadata_get() {
   local key=$1
   local file=${2:-.metadata}
@@ -488,14 +496,11 @@ list_component_versions() {
   done
 }
 
-download_and_extract_release() {
-  local component=$1
-  local version=$2
-  local target_dir=$3
-  local repo archive tmp_dir url
+download_github_release() {
+  local repo=$1 component=$2 version=$3 target_dir=$4
+  local tmp_dir archive url
   need_command curl
   need_command tar
-  repo=$(component_repo "$component")
   tmp_dir=$(mktemp -d)
   archive="$tmp_dir/${component}-${version}.tar.gz"
   url="https://github.com/${repo}/archive/refs/tags/${version}.tar.gz"
@@ -503,6 +508,10 @@ download_and_extract_release() {
   mkdir -p "$target_dir"
   tar -xzf "$archive" -C "$target_dir" --strip-components=1 || die "failed to extract $component $version."
   rm -rf "$tmp_dir"
+}
+
+download_and_extract_release() {
+  download_github_release "$(component_repo "$1")" "$@"
 }
 
 load_env_var_from_config() {
@@ -713,7 +722,7 @@ cmd_init_cloud_local() {
     "$env_abs/logs/admin" \
     "$env_abs/logs/user_signup" \
     "$env_abs/logs/worker"
-  install_root=$(data_root)
+  install_root=$(cloud_local_data_root)
   created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   cat > "$env_abs/.metadata" <<EOF
 template=cloud-local
@@ -1318,9 +1327,9 @@ cloud_local_cloud_dir() {
   local version
   version=$(metadata_get "$(cloud_local_component_binding_key cloud)") || return 1
   if is_branch_version "$version"; then
-    printf '%s/cloud/backend\n' "$ENV_ROOT"
+    printf '%s/cloud\n' "$ENV_ROOT"
   else
-    printf '%s/cloud-%s/backend\n' "$INSTALL_ROOT" "$version"
+    printf '%s/cloud-%s\n' "$INSTALL_ROOT" "$version"
   fi
 }
 
@@ -1328,7 +1337,7 @@ cloud_local_component_install_complete() {
   local component=$1
   local target_dir=$2
   case "$component" in
-    cloud) [[ -d "$target_dir/backend/.venv" ]] ;;
+    cloud) [[ -d "$target_dir/.venv" ]] ;;
     frontend|admin) [[ -d "$target_dir" ]] ;;
     *) return 1 ;;
   esac
@@ -1467,22 +1476,6 @@ list_cloud_local_component_versions() {
 # cloud-local install helpers
 # -----------------------------------------------------------------------------
 
-download_and_extract_cloud_local_release() {
-  local component=$1
-  local version=$2
-  local target_dir=$3
-  local repo tmp_dir archive url
-  need_command curl
-  need_command tar
-  repo=$(cloud_local_component_repo "$component")
-  tmp_dir=$(mktemp -d)
-  archive="$tmp_dir/${component}-${version}.tar.gz"
-  url="https://github.com/${repo}/archive/refs/tags/${version}.tar.gz"
-  curl -fsSL "$url" -o "$archive" || die "failed to download $component $version from $url."
-  mkdir -p "$target_dir"
-  tar -xzf "$archive" -C "$target_dir" --strip-components=1 || die "failed to extract $component $version."
-  rm -rf "$tmp_dir"
-}
 
 sync_cloud_local_component_environment() {
   local component=$1
@@ -1490,8 +1483,8 @@ sync_cloud_local_component_environment() {
   local target_dir=$3
   case "$component" in
     cloud)
-      [[ -f "$target_dir/backend/pyproject.toml" ]] || die "cloud $version is missing backend/pyproject.toml."
-      uv sync --frozen --no-dev --project "$target_dir/backend" || die "failed to synchronize cloud $version with uv."
+      [[ -f "$target_dir/pyproject.toml" ]] || die "cloud $version is missing pyproject.toml."
+      uv sync --frozen --no-dev --project "$target_dir" || die "failed to synchronize cloud $version with uv."
       ;;
     frontend|admin)
       ;;
@@ -1519,7 +1512,7 @@ install_cloud_local_component() {
       rm -rf "$target_dir"
     fi
     log "Installing $component $version"
-    download_and_extract_cloud_local_release "$component" "$version" "$target_dir"
+    download_github_release "$(cloud_local_component_repo "$component")" "$component" "$version" "$target_dir"
     sync_cloud_local_component_environment "$component" "$version" "$target_dir"
   fi
   metadata_set "$binding_key" "$version"
@@ -1552,17 +1545,12 @@ clone_and_sync_cloud_local_branch_component() {
 # cloud-local service management
 # -----------------------------------------------------------------------------
 
-cloud_local_db_compose_args() {
-  local cloud_dir
-  cloud_dir=$(cloud_local_cloud_dir) || die "cloud component is not installed."
-  printf '%s\n' "--project-name" "$ENV_NAME" "-f" "$cloud_dir/docker-compose.yml"
-}
 
 cloud_local_db_running() {
   local cloud_dir
   cloud_dir=$(cloud_local_cloud_dir) 2>/dev/null || return 1
-  [[ -f "$cloud_dir/docker-compose.yml" ]] || return 1
-  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/docker-compose.yml" \
+  [[ -f "$cloud_dir/backend/compose.yaml" ]] || return 1
+  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/backend/compose.yaml" \
     ps --status running --quiet 2>/dev/null | grep -q .
 }
 
@@ -1577,34 +1565,34 @@ cloud_local_service_command() {
         env POWERTOOLS_METRICS_NAMESPACE=user-api POWERTOOLS_SERVICE_NAME=user-api \
         uv run --project "$cloud_dir" uvicorn \
         oqtopus_cloud.user.lambda_function:app \
-        --host 0.0.0.0 --port '${USER_API_PORT:-8080}' --reload --log-level debug
+        --host 0.0.0.0 --port "${USER_API_PORT:-8080}" --reload --log-level debug
       ;;
     provider)
       printf '%q ' \
         env POWERTOOLS_METRICS_NAMESPACE=provider-api POWERTOOLS_SERVICE_NAME=provider-api \
         uv run --project "$cloud_dir" uvicorn \
         oqtopus_cloud.provider.lambda_function:app \
-        --host 0.0.0.0 --port '${PROVIDER_API_PORT:-8888}' --reload --log-level debug
+        --host 0.0.0.0 --port "${PROVIDER_API_PORT:-8888}" --reload --log-level debug
       ;;
     admin)
       printf '%q ' \
         env POWERTOOLS_METRICS_NAMESPACE=admin-api POWERTOOLS_SERVICE_NAME=admin-api \
         uv run --project "$cloud_dir" uvicorn \
         oqtopus_cloud.admin.lambda_function:app \
-        --host 0.0.0.0 --port '${ADMIN_API_PORT:-8889}' --reload --log-level debug
+        --host 0.0.0.0 --port "${ADMIN_API_PORT:-8889}" --reload --log-level debug
       ;;
     user_signup)
       printf '%q ' \
         env POWERTOOLS_METRICS_NAMESPACE=user_signup-api POWERTOOLS_SERVICE_NAME=user_signup-api \
         uv run --project "$cloud_dir" uvicorn \
         oqtopus_cloud.user_signup.lambda_function:app \
-        --host 0.0.0.0 --port '${USER_SIGNUP_API_PORT:-8890}' --reload --log-level debug
+        --host 0.0.0.0 --port "${USER_SIGNUP_API_PORT:-8890}" --reload --log-level debug
       ;;
     worker)
       printf '%q ' \
         env POWERTOOLS_METRICS_NAMESPACE=pending-jobs-updater POWERTOOLS_SERVICE_NAME=pending-jobs-updater \
         uv run --project "$cloud_dir" python \
-        oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py
+        "$cloud_dir/backend/oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py"
       ;;
     *)
       die "unknown service: $service"
@@ -1618,20 +1606,23 @@ cloud_local_start_db() {
   need_command docker
   need_command uv
   cloud_dir=$(cloud_local_cloud_dir) || die "cannot start 'db': cloud component is not installed."
-  [[ -f "$cloud_dir/docker-compose.yml" ]] || die "cannot start 'db': docker-compose.yml not found in $cloud_dir"
+  [[ -f "$cloud_dir/backend/compose.yaml" ]] || die "cannot start 'db': compose.yaml not found in $cloud_dir/backend"
   if cloud_local_db_running; then
     log "db is already running; skipping."
     return 0
   fi
   log "Starting db"
-  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/docker-compose.yml" up -d \
+  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/backend/compose.yaml" up -d db minio mc \
     || die "failed to start db with docker compose."
-  (
-    cd "$ENV_ROOT"
-    load_env_exports
-    uv run --project "$cloud_dir" python storage/init_storage.py \
-      || die "failed to run storage/init_storage.py."
-  )
+  local init_script="$cloud_dir/backend/storage/init_storage.py"
+  if [[ -f "$init_script" ]]; then
+    (
+      cd "$ENV_ROOT"
+      load_env_exports
+      uv run --project "$cloud_dir" python "$init_script" \
+        || die "failed to run storage/init_storage.py."
+    )
+  fi
   log "Started db"
 }
 
@@ -1639,9 +1630,9 @@ cloud_local_stop_db() {
   local cloud_dir
   need_command docker
   cloud_dir=$(cloud_local_cloud_dir) || die "cannot stop 'db': cloud component is not installed."
-  [[ -f "$cloud_dir/docker-compose.yml" ]] || die "cannot stop 'db': docker-compose.yml not found in $cloud_dir"
+  [[ -f "$cloud_dir/backend/compose.yaml" ]] || die "cannot stop 'db': compose.yaml not found in $cloud_dir/backend"
   log "Stopping db"
-  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/docker-compose.yml" down \
+  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/backend/compose.yaml" down \
     || die "failed to stop db with docker compose."
   log "Stopped db"
 }
@@ -1689,25 +1680,23 @@ cloud_local_start_service() {
     )
     return
   fi
+  local log_file="$ENV_ROOT/logs/$service/service.log"
   (
     trap '' HUP
     cd "$ENV_ROOT"
     load_env_exports
-    ( set +e; eval "$cmd"; exit "$?" ) &
-    pid=$!
-    printf '%s\n' "$pid" > "$pid_file"
-    release_service_start_lock
-    log "Started $service (PID $pid)"
-    set +e
-    wait "$pid"
-    status=$?
-    set -e
-    recorded_pid=$(cat "$pid_file" 2>/dev/null || true)
-    if [[ "$recorded_pid" == "$pid" ]]; then
-      rm -f "$pid_file"
-    fi
+    eval "exec $cmd" >> "$log_file" 2>&1
   ) &
-  disown
+  pid=$!
+  printf '%s\n' "$pid" > "$pid_file"
+  sleep 0.2
+  if ! pid_alive "$pid"; then
+    rm -f "$pid_file"
+    release_service_start_lock
+    die "failed to start '$service'. The process exited immediately."
+  fi
+  log "Started $service (PID $pid)"
+  release_service_start_lock
 }
 
 cloud_local_stop_service() {
@@ -1902,9 +1891,23 @@ cmd_cloud_local_restart() {
 
 cmd_cloud_local_status() {
   validate_cloud_local_env
-  local service pid_file pid
+  local service pid_file pid cloud_dir container_names
+  cloud_dir=$(cloud_local_cloud_dir) 2>/dev/null || true
   if cloud_local_db_running; then
-    printf 'db: Running\n'
+    local db_names=() svc name
+    for svc in db minio mc; do
+      name=$(docker ps -a \
+        --filter "label=com.docker.compose.project=${ENV_NAME}" \
+        --filter "label=com.docker.compose.service=${svc}" \
+        --format "{{.Names}}" 2>/dev/null)
+      [[ -n "$name" ]] && db_names+=("$name")
+    done
+    local joined="" first=1
+    for name in "${db_names[@]}"; do
+      if [[ "$first" -eq 1 ]]; then joined="$name"; first=0
+      else joined="${joined}, ${name}"; fi
+    done
+    printf 'db: Running (%s)\n' "$joined"
   else
     printf 'db: Stopped\n'
   fi
