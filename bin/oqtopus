@@ -78,8 +78,9 @@ usage_init() {
   cat <<'EOF'
 Usage:
   oqtopus init <env_name> --template backend
+  oqtopus init <env_name> --template cloud-local
 
-Creates a local OQTOPUS backend environment from the official template.
+Creates a local OQTOPUS environment from the official template.
 EOF
 }
 
