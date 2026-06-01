@@ -124,6 +124,7 @@ celerybeat.pid
 # Environments
 .env
 !templates/backend/config/.env
+!templates/cloud-local/config/.env
 .venv
 env/
 venv/
