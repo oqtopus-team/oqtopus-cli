@@ -8,11 +8,17 @@ nav:
   - Usage:
       - Installation: usage/installation.md
       - Quick Start: usage/quick-start.md
-      - Backend Environment: usage/backend-environment.md
-      - Configuration: usage/configuration.md
-      - Managing Backend Components: usage/backend-components.md
-      - Starting and Stopping Services: usage/lifecycle.md
-      - Device Status: usage/device-status.md
+      - Cloud-Local:
+          - Cloud-Local Environment: usage/cloud-local-environment.md
+          - Cloud-Local Configuration: usage/cloud-local-configuration.md
+          - Managing Cloud-Local Components: usage/cloud-local-components.md
+          - Starting and Stopping Cloud-Local Services: usage/cloud-local-lifecycle.md
+      - Backend:
+          - Backend Environment: usage/backend-environment.md
+          - Backend Configuration: usage/backend-configuration.md
+          - Managing Backend Components: usage/backend-components.md
+          - Starting and Stopping Backend Services: usage/backend-lifecycle.md
+          - Backend Device Status: usage/backend-device-status.md
       - Shell Completion: usage/shell-completion.md
       - Troubleshooting: usage/troubleshooting.md
       - Command Reference: usage/command-reference.md

@@ -1,4 +1,4 @@
-# Device Status
+# Backend Device Status
 
 The gateway device status can be shown or changed with:
 

@@ -1,5 +1,78 @@
 # Quick Start
 
+This page covers two workflows: **cloud-local** and **backend**. Choose the
+one that matches your use case.
+
+## Cloud-Local Quick Start
+
+This guide creates a local cloud-local environment, installs the cloud-local
+components, starts all managed services, checks their status, and stops them.
+
+### Create A Cloud-Local Environment
+
+```bash
+oqtopus init my-cloud --template cloud-local
+cd my-cloud
+```
+
+### Install Cloud-Local Components
+
+```bash
+oqtopus cloud-local install all
+```
+
+This installs the latest stable releases of:
+
+- `cloud` [https://github.com/oqtopus-team/oqtopus-cloud](https://github.com/oqtopus-team/oqtopus-cloud)
+- `frontend` [https://github.com/oqtopus-team/oqtopus-frontend](https://github.com/oqtopus-team/oqtopus-frontend)
+- `admin` [https://github.com/oqtopus-team/oqtopus-admin](https://github.com/oqtopus-team/oqtopus-admin)
+
+### Start Cloud-Local Services
+
+```bash
+oqtopus cloud-local start all
+```
+
+The `db` service is started first via Docker Compose. The remaining services
+(`worker`, `user_signup`, `admin`, `provider`, `user`) are started as managed
+processes.
+
+### Check Cloud-Local Status
+
+```bash
+oqtopus cloud-local status
+```
+
+Example output:
+
+```text
+db: Running (my-cloud-db-1, my-cloud-minio-1, my-cloud-mc-1)
+worker: Running (PID 12345)
+user_signup: Running (PID 12346)
+admin: Running (PID 12347)
+provider: Running (PID 12348)
+user: Running (PID 12349)
+```
+
+### Stop Cloud-Local Services
+
+```bash
+oqtopus cloud-local stop all
+```
+
+Services are stopped in the reverse of the start order. `db` is stopped last
+via `docker compose down`.
+
+### Cloud-Local Next Steps
+
+- Learn what `init` creates in [Cloud-Local Environment](./cloud-local-environment.md).
+- Install, update, or remove components in [Managing Cloud-Local Components](./cloud-local-components.md).
+- Start and stop individual services in [Starting and Stopping Cloud-Local Services](./cloud-local-lifecycle.md).
+
+---
+
+## Backend Quick Start
+
 This guide creates a local backend environment, installs the backend
 components, starts all managed services, checks their status, and stops them.
 
@@ -54,7 +127,7 @@ oqtopus backend install engine branch:develop
 
 See [Managing Backend Components](./backend-components.md) for details.
 
-## Start Services
+## Start Backend Services
 
 ```bash
 oqtopus backend start all
@@ -62,7 +135,7 @@ oqtopus backend start all
 
 This starts all managed backend services in the required order.
 
-## Check Status
+## Check Backend Status
 
 ```bash
 oqtopus backend status
@@ -80,7 +153,7 @@ tranqu: Running (PID 12350)
 gateway: Running (PID 12351)
 ```
 
-## Stop Services
+## Stop Backend Services
 
 ```bash
 oqtopus backend stop all
@@ -88,8 +161,8 @@ oqtopus backend stop all
 
 Services are stopped in the reverse of the start order.
 
-## Next Steps
+## Backend Next Steps
 
 - Learn what `init` creates in [Backend Environment](./backend-environment.md).
 - Install, update, or remove components in [Managing Backend Components](./backend-components.md).
-- Start and stop individual services in [Starting and Stopping Services](./lifecycle.md).
+- Start and stop individual services in [Starting and Stopping Services](./backend-lifecycle.md).

@@ -59,13 +59,13 @@ oqtopus backend build sse-runtime
 
 ## `uv` Is Required
 
-Backend components are synchronized and launched with `uv`.
+Backend and cloud-local components are synchronized and launched with `uv`.
 
-Install `uv` before installing or starting backend components.
+Install `uv` before installing or starting components.
 
-## `git` Is Required For Branch Install
+## `git` Is Required For Branch Install (Backend)
 
-Installing a component from a branch requires `git`.
+Installing a backend component from a branch requires `git`.
 
 If `git` is not installed, the following command fails:
 
@@ -75,7 +75,7 @@ oqtopus backend install engine branch:develop
 
 Install `git`, then run the command again.
 
-## Branch Name Not Found
+## Branch Name Not Found (Backend)
 
 If the specified branch does not exist in the remote repository, the clone
 fails with an error from `git`.
@@ -87,7 +87,7 @@ correct branch name:
 oqtopus backend install engine branch:<correct-branch>
 ```
 
-## Component Version Is Not Bound
+## Backend: Component Version Is Not Bound
 
 If a service is started before its component is installed, `start` fails.
 
@@ -141,5 +141,43 @@ Inspect the process and stop it manually if required.
 
 OQTOPUS CLI creates log directories, but it does not create log files.
 
-Log files appear only after the backend applications write them according to the
-`logging.yaml` files under `config/`.
+For backend environments, log files appear only after the backend applications
+write them according to the `logging.yaml` files under `config/`.
+
+For cloud-local environments, runtime stdout and stderr are written to
+`$ENV_ROOT/logs/<service>/service.log` for each service started in background
+mode.
+
+## `git` Is Required For Branch Install (Cloud-Local)
+
+Installing a cloud-local component from a branch requires `git`:
+
+```bash
+oqtopus cloud-local install cloud branch:develop
+```
+
+Install `git`, then run the command again.
+
+## Docker Compose Is Required For Cloud-Local DB
+
+The `db` service in a cloud-local environment uses Docker Compose:
+
+```bash
+oqtopus cloud-local start db
+```
+
+If Docker or Docker Compose is not installed or not running, this command
+fails. Install and start Docker, then run the command again.
+
+## Cloud-Local DB Container Name Conflict
+
+If `docker compose up` fails with a container name conflict, a container from
+a previous run may still exist. Remove it with:
+
+```bash
+docker rm -f <container-name>
+```
+
+Then run `oqtopus cloud-local start db` again. To avoid conflicts, the
+`compose.yaml` in the `cloud` component should not use fixed `container_name`
+values.

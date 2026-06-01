@@ -1,5 +1,8 @@
 # Managing Backend Components
 
+This page describes component management for `--template backend` environments.
+For cloud-local components, see [Managing Cloud-Local Components](./cloud-local-components.md).
+
 OQTOPUS CLI manages three backend components:
 
 - `engine`

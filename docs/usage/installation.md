@@ -42,50 +42,44 @@ See [Shell Completion](./shell-completion.md) for manual setup.
 
 ## Supported Platforms
 
-OQTOPUS CLI v1.0.0 supports Linux and macOS.
+OQTOPUS CLI currently supports Linux and macOS.
 
-Windows is not supported yet.
+Windows is not supported.
 
 ## Prerequisites
 
 ### Docker
 
-Install Docker before installing the `engine` backend component. OQTOPUS CLI
-builds the `sse_runtime` Docker image during:
+Docker is required in two cases:
+
+**Cloud-local template:** `oqtopus cloud-local start db` starts the database
+and object storage via Docker Compose:
+
+```bash
+oqtopus cloud-local start db
+```
+
+**Backend template:** `oqtopus backend install engine` builds the `sse_runtime`
+Docker image as part of the installation:
 
 ```bash
 oqtopus backend install engine
-```
-
-and:
-
-```bash
 oqtopus backend install all
 ```
 
-The Docker image build can take several minutes, especially the first time it
-runs or after Docker cache cleanup.
-
-To defer only this Docker image build during installation, use
-`--skip-sse-build`:
+To defer the `sse_runtime` build, use `--skip-sse-build` and build it later:
 
 ```bash
 oqtopus backend install engine --skip-sse-build
-oqtopus backend install all --skip-sse-build
-```
-
-After the engine is installed, build the image for the engine version recorded
-in `.metadata` with:
-
-```bash
 oqtopus backend build sse-runtime
 ```
 
 ### Git
 
-`git` is required when installing a backend component from a branch:
+`git` is required when installing any component from a branch:
 
 ```bash
+oqtopus cloud-local install cloud branch:develop
 oqtopus backend install engine branch:develop
 ```
 
