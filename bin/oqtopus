@@ -18,8 +18,17 @@ SERVICES=(core sse_engine mitigator estimator combiner tranqu gateway)
 START_ALL_ORDER=(gateway tranqu mitigator estimator combiner sse_engine core)
 STOP_ALL_ORDER=(core sse_engine combiner estimator mitigator tranqu gateway)
 
+CLOUD_LOCAL_CLOUD_REPO="oqtopus-team/oqtopus-cloud"
+CLOUD_LOCAL_FRONTEND_REPO="oqtopus-team/oqtopus-frontend"
+CLOUD_LOCAL_ADMIN_REPO="oqtopus-team/oqtopus-admin"
+CLOUD_LOCAL_INSTALL_COMPONENTS=(cloud frontend admin)
+CLOUD_LOCAL_SERVICES=(db worker user_signup admin provider user)
+CLOUD_LOCAL_START_ORDER=(db worker user_signup admin provider user)
+CLOUD_LOCAL_STOP_ORDER=(user provider admin user_signup worker db)
+
 ENV_ROOT=""
 INSTALL_ROOT=""
+ENV_NAME=""
 ACTIVE_SERVICE_LOCK=""
 
 # -----------------------------------------------------------------------------
@@ -651,9 +660,17 @@ cmd_init() {
   local flag=${2:-}
   local template=${3:-}
   [[ -n "$env_name" && "$flag" == "--template" && -n "$template" && $# -eq 3 ]] || { usage_init; exit 1; }
-  [[ "$template" == "backend" ]] || die "template '$template' is not implemented."
   validate_env_name "$env_name"
   [[ ! -e "$env_name" ]] || die "target directory already exists: $env_name"
+  case "$template" in
+    backend) cmd_init_backend "$env_name" ;;
+    cloud-local) cmd_init_cloud_local "$env_name" ;;
+    *) die "template '$template' is not implemented." ;;
+  esac
+}
+
+cmd_init_backend() {
+  local env_name=$1
   mkdir -p "$env_name"
   local env_abs install_root created_at
   env_abs=$(abs_path "$env_name")
@@ -679,6 +696,52 @@ env_root=$env_abs
 created_at=$created_at
 EOF
   log "Created backend environment: $env_abs"
+}
+
+cmd_init_cloud_local() {
+  local env_name=$1
+  mkdir -p "$env_name"
+  local env_abs install_root created_at
+  env_abs=$(abs_path "$env_name")
+  download_cloud_local_template "$env_abs"
+  mkdir -p \
+    "$env_abs/pids" \
+    "$env_abs/logs/db" \
+    "$env_abs/logs/user" \
+    "$env_abs/logs/provider" \
+    "$env_abs/logs/admin" \
+    "$env_abs/logs/user_signup" \
+    "$env_abs/logs/worker"
+  install_root=$(data_root)
+  created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  cat > "$env_abs/.metadata" <<EOF
+template=cloud-local
+install_root=$install_root
+env_name=$env_name
+env_root=$env_abs
+created_at=$created_at
+EOF
+  log "Created cloud-local environment: $env_abs"
+}
+
+download_cloud_local_template() {
+  local env_dir=$1
+  local tmp_dir archive extract_dir template_dir url
+  need_command curl
+  need_command tar
+  need_command cp
+  need_command find
+  tmp_dir=$(mktemp -d)
+  archive="$tmp_dir/${CLI_REPO_NAME}-${TEMPLATE_BRANCH}.tar.gz"
+  extract_dir="$tmp_dir/extract"
+  url="https://github.com/${CLI_REPO_OWNER}/${CLI_REPO_NAME}/archive/refs/heads/${TEMPLATE_BRANCH}.tar.gz"
+  mkdir -p "$extract_dir"
+  curl -fsSL "$url" -o "$archive" || die "failed to download cloud-local template archive."
+  tar -xzf "$archive" -C "$extract_dir" || die "failed to extract cloud-local template archive."
+  template_dir=$(find "$extract_dir" -type d -path "*/templates/cloud-local" | head -n 1)
+  [[ -n "$template_dir" ]] || die "templates/cloud-local was not found in the downloaded archive."
+  cp -R "$template_dir"/. "$env_dir"/
+  rm -rf "$tmp_dir"
 }
 
 # -----------------------------------------------------------------------------
@@ -1157,6 +1220,768 @@ cmd_backend() {
   esac
 }
 
+# =============================================================================
+# cloud-local subcommand
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# cloud-local usage
+# -----------------------------------------------------------------------------
+
+usage_cloud_local() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local <command> [args]
+
+Commands:
+  install         Install cloud-local component releases.
+  versions        List available component versions.
+  uninstall       Remove an installed release.
+  update          Install the latest release of a component.
+  start           Start a managed service.
+  stop            Stop a managed service.
+  restart         Restart a managed service.
+  status          Show process status.
+  info            Show environment metadata.
+  help            Show this help.
+EOF
+}
+
+usage_cloud_local_install() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local install <cloud|frontend|admin> [version|branch:<branch>]
+  oqtopus cloud-local install all
+EOF
+}
+
+usage_cloud_local_uninstall() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local uninstall <cloud|frontend|admin> <version>
+  oqtopus cloud-local uninstall <cloud|frontend|admin> branch:<branch>
+EOF
+}
+
+usage_cloud_local_update() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local update <cloud|frontend|admin>
+EOF
+}
+
+usage_cloud_local_start() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local start <db|user|provider|admin|user_signup|worker|all>
+  oqtopus cloud-local start <db|user|provider|admin|user_signup|worker> --foreground
+EOF
+}
+
+usage_cloud_local_stop() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local stop <db|user|provider|admin|user_signup|worker|all>
+EOF
+}
+
+usage_cloud_local_restart() {
+  cat <<'EOF'
+Usage:
+  oqtopus cloud-local restart <db|user|provider|admin|user_signup|worker|all>
+EOF
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local component helpers
+# -----------------------------------------------------------------------------
+
+cloud_local_component_repo() {
+  case "$1" in
+    cloud)    printf '%s\n' "$CLOUD_LOCAL_CLOUD_REPO" ;;
+    frontend) printf '%s\n' "$CLOUD_LOCAL_FRONTEND_REPO" ;;
+    admin)    printf '%s\n' "$CLOUD_LOCAL_ADMIN_REPO" ;;
+    *) return 1 ;;
+  esac
+}
+
+cloud_local_component_repo_url() {
+  printf 'https://github.com/%s.git\n' "$(cloud_local_component_repo "$1")"
+}
+
+cloud_local_component_binding_key() {
+  printf 'cloud_local_%s_version\n' "$1"
+}
+
+cloud_local_cloud_dir() {
+  local version
+  version=$(metadata_get "$(cloud_local_component_binding_key cloud)") || return 1
+  if is_branch_version "$version"; then
+    printf '%s/cloud/backend\n' "$ENV_ROOT"
+  else
+    printf '%s/cloud-%s/backend\n' "$INSTALL_ROOT" "$version"
+  fi
+}
+
+cloud_local_component_install_complete() {
+  local component=$1
+  local target_dir=$2
+  case "$component" in
+    cloud) [[ -d "$target_dir/backend/.venv" ]] ;;
+    frontend|admin) [[ -d "$target_dir" ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local metadata helpers
+# -----------------------------------------------------------------------------
+
+validate_cloud_local_env() {
+  local current template metadata_env_root
+  [[ -f .metadata ]] || die $'.metadata not found.\nThis directory is not an OQTOPUS cloud-local environment.'
+  template=$(metadata_get template) || die "invalid .metadata: missing template."
+  [[ "$template" == "cloud-local" ]] || die "invalid environment template. Found template='$template', but 'oqtopus cloud-local' requires template='cloud-local'."
+  metadata_env_root=$(metadata_get env_root) || die "invalid .metadata: missing env_root."
+  current=$(pwd -P)
+  if [[ "$metadata_env_root" != "$current" ]]; then
+    die $'Current directory does not match env_root.\n'"env_root = $metadata_env_root"$'\n'"current  = $current"
+  fi
+  ENV_ROOT="$metadata_env_root"
+  ENV_NAME=$(metadata_get env_name) || die "invalid .metadata: missing env_name."
+  INSTALL_ROOT=$(metadata_get install_root) || die "invalid .metadata: missing install_root."
+}
+
+try_load_cloud_local_env() {
+  local current template metadata_env_root metadata_env_name metadata_install_root
+  [[ -f .metadata ]] || return 1
+  template=$(metadata_get template 2>/dev/null) || return 1
+  [[ "$template" == "cloud-local" ]] || return 1
+  metadata_env_root=$(metadata_get env_root 2>/dev/null) || return 1
+  metadata_env_name=$(metadata_get env_name 2>/dev/null) || return 1
+  metadata_install_root=$(metadata_get install_root 2>/dev/null) || return 1
+  current=$(pwd -P)
+  [[ "$metadata_env_root" == "$current" ]] || return 1
+  ENV_ROOT="$metadata_env_root"
+  ENV_NAME="$metadata_env_name"
+  INSTALL_ROOT="$metadata_install_root"
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local version listing
+# -----------------------------------------------------------------------------
+
+list_cloud_local_component_versions() {
+  local component=$1
+  local repo tags_url tags_json tag_count versions current_version binding_key version
+  local have_env_context=0
+  local remote_versions installed_versions display_versions
+  is_in_list "$component" "${CLOUD_LOCAL_INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
+  need_command curl
+  need_command jq
+  repo=$(cloud_local_component_repo "$component")
+  tags_url="https://api.github.com/repos/${repo}/tags?per_page=100"
+  tags_json=$(curl -fsSL "$tags_url") || die "failed to query GitHub tags API: $tags_url"
+  tag_count=$(jq 'length' <<< "$tags_json")
+  if [[ "$tag_count" == "100" ]]; then
+    warn "the GitHub tags API returned 100 tags."
+    warn "Additional tags may exist, so the version list may be incomplete."
+  fi
+  versions=$(jq -r '[.[].name as $tag | $tag | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | capture("^v(?<major>[0-9]+)\\.(?<minor>[0-9]+)\\.(?<patch>[0-9]+)$") | {tag: $tag, major: (.major | tonumber), minor: (.minor | tonumber), patch: (.patch | tonumber)}] | sort_by([.major, .minor, .patch]) | reverse | .[].tag' <<< "$tags_json")
+  [[ -n "$versions" ]] || die "no stable versions found for $component."
+  remote_versions="$versions"
+  installed_versions=""
+  display_versions="$versions"
+
+  if try_load_cloud_local_env; then
+    have_env_context=1
+    binding_key=$(cloud_local_component_binding_key "$component")
+    current_version=$(metadata_get "$binding_key" 2>/dev/null || true)
+    if [[ -n "$current_version" ]]; then
+      display_versions="${display_versions}"$'\n'"${current_version}"
+    fi
+    if [[ -d "$INSTALL_ROOT" ]]; then
+      for release_dir in "$INSTALL_ROOT"/"${component}"-v*; do
+        [[ -d "$release_dir" ]] || continue
+        version=$(basename "$release_dir")
+        version=${version#"${component}-"}
+        [[ -n "$version" ]] || continue
+        installed_versions="${installed_versions}"$'\n'"${version}"
+        display_versions="${display_versions}"$'\n'"${version}"
+      done
+    fi
+  fi
+
+  printf '%s:\n' "$component"
+  printf '%s\n' "$display_versions" | jq -R -s -r '
+    split("\n")
+    | map(select(length > 0))
+    | unique
+    | map(
+        . as $tag
+        | if ($tag | startswith("branch:")) then
+            {tag: $tag, branch: true, stable: false, major: -1, minor: -1, patch: -1}
+          elif test("^v[0-9]+\\.[0-9]+\\.[0-9]+$") then
+            capture("^v(?<major>[0-9]+)\\.(?<minor>[0-9]+)\\.(?<patch>[0-9]+)$")
+            | {tag: $tag, branch: false, stable: true, major: (.major | tonumber), minor: (.minor | tonumber), patch: (.patch | tonumber)}
+          else
+            {tag: $tag, branch: false, stable: false, major: -1, minor: -1, patch: -1}
+          end
+      )
+    | sort_by(.branch, .stable, .major, .minor, .patch, .tag)
+    | reverse
+    | .[].tag
+  ' | while IFS= read -r version; do
+    local prefix annotation display_tag
+    prefix="  "
+    annotation=""
+    display_tag="$version"
+    if [[ "$have_env_context" -eq 1 && "${current_version:-}" == "$version" ]]; then
+      prefix="* "
+    fi
+    if [[ "$version" == branch:* ]]; then
+      display_tag="$version"
+      annotation="installed"
+    else
+      if [[ "$have_env_context" -eq 1 ]] && line_list_contains "$version" "$installed_versions"; then
+        annotation="installed"
+      fi
+      if ! line_list_contains "$version" "$remote_versions"; then
+        if [[ -n "$annotation" ]]; then
+          annotation="${annotation}, not in remote tags"
+        else
+          annotation="not in remote tags"
+        fi
+      fi
+    fi
+    if [[ -n "$annotation" ]]; then
+      printf '%s%s (%s)\n' "$prefix" "$display_tag" "$annotation"
+    else
+      printf '%s%s\n' "$prefix" "$display_tag"
+    fi
+  done
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local install helpers
+# -----------------------------------------------------------------------------
+
+download_and_extract_cloud_local_release() {
+  local component=$1
+  local version=$2
+  local target_dir=$3
+  local repo tmp_dir archive url
+  need_command curl
+  need_command tar
+  repo=$(cloud_local_component_repo "$component")
+  tmp_dir=$(mktemp -d)
+  archive="$tmp_dir/${component}-${version}.tar.gz"
+  url="https://github.com/${repo}/archive/refs/tags/${version}.tar.gz"
+  curl -fsSL "$url" -o "$archive" || die "failed to download $component $version from $url."
+  mkdir -p "$target_dir"
+  tar -xzf "$archive" -C "$target_dir" --strip-components=1 || die "failed to extract $component $version."
+  rm -rf "$tmp_dir"
+}
+
+sync_cloud_local_component_environment() {
+  local component=$1
+  local version=$2
+  local target_dir=$3
+  case "$component" in
+    cloud)
+      [[ -f "$target_dir/backend/pyproject.toml" ]] || die "cloud $version is missing backend/pyproject.toml."
+      uv sync --frozen --no-dev --project "$target_dir/backend" || die "failed to synchronize cloud $version with uv."
+      ;;
+    frontend|admin)
+      ;;
+  esac
+}
+
+install_cloud_local_component() {
+  local component=$1
+  local version=${2:-}
+  local target_dir binding_key repo
+  is_in_list "$component" "${CLOUD_LOCAL_INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
+  need_command uv
+  repo=$(cloud_local_component_repo "$component")
+  if [[ -z "$version" ]]; then
+    version=$(resolve_latest_version "$repo")
+  fi
+  target_dir="$INSTALL_ROOT/${component}-${version}"
+  binding_key=$(cloud_local_component_binding_key "$component")
+  mkdir -p "$INSTALL_ROOT"
+  if cloud_local_component_install_complete "$component" "$target_dir"; then
+    log "$component $version is already installed; reusing $target_dir"
+  else
+    if [[ -e "$target_dir" ]]; then
+      log "Removing incomplete installation: $target_dir"
+      rm -rf "$target_dir"
+    fi
+    log "Installing $component $version"
+    download_and_extract_cloud_local_release "$component" "$version" "$target_dir"
+    sync_cloud_local_component_environment "$component" "$version" "$target_dir"
+  fi
+  metadata_set "$binding_key" "$version"
+  log "Bound $binding_key=$version"
+}
+
+clone_and_sync_cloud_local_branch_component() {
+  local component=$1
+  local branch=$2
+  local repo_url target_dir binding_key version
+  is_in_list "$component" "${CLOUD_LOCAL_INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
+  need_command git
+  need_command uv
+  repo_url=$(cloud_local_component_repo_url "$component")
+  target_dir="$ENV_ROOT/$component"
+  binding_key=$(cloud_local_component_binding_key "$component")
+  if [[ -e "$target_dir" ]]; then
+    log "Removing existing branch installation: $target_dir"
+    rm -rf "$target_dir"
+  fi
+  log "Cloning $component from branch '$branch'"
+  git clone --depth 1 --branch "$branch" "$repo_url" "$target_dir" || die "failed to clone $component from branch '$branch'."
+  version="branch:${branch}"
+  sync_cloud_local_component_environment "$component" "$version" "$target_dir"
+  metadata_set "$binding_key" "$version"
+  log "Bound $binding_key=$version"
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local service management
+# -----------------------------------------------------------------------------
+
+cloud_local_db_compose_args() {
+  local cloud_dir
+  cloud_dir=$(cloud_local_cloud_dir) || die "cloud component is not installed."
+  printf '%s\n' "--project-name" "$ENV_NAME" "-f" "$cloud_dir/docker-compose.yml"
+}
+
+cloud_local_db_running() {
+  local cloud_dir
+  cloud_dir=$(cloud_local_cloud_dir) 2>/dev/null || return 1
+  [[ -f "$cloud_dir/docker-compose.yml" ]] || return 1
+  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/docker-compose.yml" \
+    ps --status running --quiet 2>/dev/null | grep -q .
+}
+
+cloud_local_service_command() {
+  local service=$1
+  local cloud_dir
+  cloud_dir=$(cloud_local_cloud_dir) || die "cannot start '$service': cloud component is not installed."
+  [[ -d "$cloud_dir" ]] || die "cannot start '$service': cloud directory not found: $cloud_dir"
+  case "$service" in
+    user)
+      printf '%q ' \
+        env POWERTOOLS_METRICS_NAMESPACE=user-api POWERTOOLS_SERVICE_NAME=user-api \
+        uv run --project "$cloud_dir" uvicorn \
+        oqtopus_cloud.user.lambda_function:app \
+        --host 0.0.0.0 --port '${USER_API_PORT:-8080}' --reload --log-level debug
+      ;;
+    provider)
+      printf '%q ' \
+        env POWERTOOLS_METRICS_NAMESPACE=provider-api POWERTOOLS_SERVICE_NAME=provider-api \
+        uv run --project "$cloud_dir" uvicorn \
+        oqtopus_cloud.provider.lambda_function:app \
+        --host 0.0.0.0 --port '${PROVIDER_API_PORT:-8888}' --reload --log-level debug
+      ;;
+    admin)
+      printf '%q ' \
+        env POWERTOOLS_METRICS_NAMESPACE=admin-api POWERTOOLS_SERVICE_NAME=admin-api \
+        uv run --project "$cloud_dir" uvicorn \
+        oqtopus_cloud.admin.lambda_function:app \
+        --host 0.0.0.0 --port '${ADMIN_API_PORT:-8889}' --reload --log-level debug
+      ;;
+    user_signup)
+      printf '%q ' \
+        env POWERTOOLS_METRICS_NAMESPACE=user_signup-api POWERTOOLS_SERVICE_NAME=user_signup-api \
+        uv run --project "$cloud_dir" uvicorn \
+        oqtopus_cloud.user_signup.lambda_function:app \
+        --host 0.0.0.0 --port '${USER_SIGNUP_API_PORT:-8890}' --reload --log-level debug
+      ;;
+    worker)
+      printf '%q ' \
+        env POWERTOOLS_METRICS_NAMESPACE=pending-jobs-updater POWERTOOLS_SERVICE_NAME=pending-jobs-updater \
+        uv run --project "$cloud_dir" python \
+        oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py
+      ;;
+    *)
+      die "unknown service: $service"
+      ;;
+  esac
+}
+
+cloud_local_start_db() {
+  local foreground=${1:-0}
+  local cloud_dir
+  need_command docker
+  need_command uv
+  cloud_dir=$(cloud_local_cloud_dir) || die "cannot start 'db': cloud component is not installed."
+  [[ -f "$cloud_dir/docker-compose.yml" ]] || die "cannot start 'db': docker-compose.yml not found in $cloud_dir"
+  if cloud_local_db_running; then
+    log "db is already running; skipping."
+    return 0
+  fi
+  log "Starting db"
+  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/docker-compose.yml" up -d \
+    || die "failed to start db with docker compose."
+  (
+    cd "$ENV_ROOT"
+    load_env_exports
+    uv run --project "$cloud_dir" python storage/init_storage.py \
+      || die "failed to run storage/init_storage.py."
+  )
+  log "Started db"
+}
+
+cloud_local_stop_db() {
+  local cloud_dir
+  need_command docker
+  cloud_dir=$(cloud_local_cloud_dir) || die "cannot stop 'db': cloud component is not installed."
+  [[ -f "$cloud_dir/docker-compose.yml" ]] || die "cannot stop 'db': docker-compose.yml not found in $cloud_dir"
+  log "Stopping db"
+  docker compose --project-name "$ENV_NAME" -f "$cloud_dir/docker-compose.yml" down \
+    || die "failed to stop db with docker compose."
+  log "Stopped db"
+}
+
+cloud_local_start_service() {
+  local service=$1
+  local foreground=${2:-0}
+  local pid_file="$ENV_ROOT/pids/${service}.pid"
+  local pid cmd status recorded_pid
+  is_in_list "$service" "${CLOUD_LOCAL_SERVICES[@]}" || die "unknown service: $service"
+  if [[ "$service" == "db" ]]; then
+    cloud_local_start_db "$foreground"
+    return
+  fi
+  acquire_service_start_lock "$service"
+  if [[ -f "$pid_file" ]]; then
+    pid=$(cat "$pid_file")
+    if pid_alive "$pid"; then
+      release_service_start_lock
+      log "$service is already running (PID $pid); skipping."
+      return 0
+    fi
+    rm -f "$pid_file"
+  fi
+  need_command uv
+  cmd=$(cloud_local_service_command "$service")
+  if [[ "$foreground" -eq 1 ]]; then
+    (
+      cd "$ENV_ROOT"
+      load_env_exports
+      ( set +e; eval "$cmd"; exit "$?" ) &
+      pid=$!
+      printf '%s\n' "$pid" > "$pid_file"
+      release_service_start_lock
+      log "Started $service in foreground (PID $pid)"
+      set +e
+      wait "$pid"
+      status=$?
+      set -e
+      recorded_pid=$(cat "$pid_file" 2>/dev/null || true)
+      if [[ "$recorded_pid" == "$pid" ]]; then
+        rm -f "$pid_file"
+      fi
+      exit "$status"
+    )
+    return
+  fi
+  (
+    trap '' HUP
+    cd "$ENV_ROOT"
+    load_env_exports
+    ( set +e; eval "$cmd"; exit "$?" ) &
+    pid=$!
+    printf '%s\n' "$pid" > "$pid_file"
+    release_service_start_lock
+    log "Started $service (PID $pid)"
+    set +e
+    wait "$pid"
+    status=$?
+    set -e
+    recorded_pid=$(cat "$pid_file" 2>/dev/null || true)
+    if [[ "$recorded_pid" == "$pid" ]]; then
+      rm -f "$pid_file"
+    fi
+  ) &
+  disown
+}
+
+cloud_local_stop_service() {
+  local service=$1
+  local pid_file="$ENV_ROOT/pids/${service}.pid"
+  local pid timeout=5 elapsed=0
+  is_in_list "$service" "${CLOUD_LOCAL_SERVICES[@]}" || die "unknown service: $service"
+  if [[ "$service" == "db" ]]; then
+    cloud_local_stop_db
+    return
+  fi
+  if [[ ! -f "$pid_file" ]]; then
+    log "$service is not running."
+    return 0
+  fi
+  pid=$(cat "$pid_file")
+  if ! pid_alive "$pid"; then
+    rm -f "$pid_file"
+    log "$service is not running."
+    return 0
+  fi
+  kill "$pid" || die "failed to send TERM to $service (PID $pid)."
+  while pid_alive "$pid" && [[ "$elapsed" -lt "$timeout" ]]; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+  if pid_alive "$pid"; then
+    die "$service (PID $pid) did not stop within $timeout seconds."
+  fi
+  rm -f "$pid_file"
+  log "Stopped $service (PID $pid)"
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local commands
+# -----------------------------------------------------------------------------
+
+cmd_cloud_local_versions() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    printf 'Usage:\n  oqtopus cloud-local versions <cloud|frontend|admin>\n'
+    return
+  fi
+  local component=${1:-}
+  [[ -n "$component" && $# -eq 1 ]] || { printf 'Usage:\n  oqtopus cloud-local versions <cloud|frontend|admin>\n'; exit 1; }
+  list_cloud_local_component_versions "$component"
+}
+
+cmd_cloud_local_install() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_cloud_local_install
+    return
+  fi
+  validate_cloud_local_env
+  local component=${1:-}
+  local version=""
+  local arg
+  [[ -n "$component" ]] || { usage_cloud_local_install; exit 1; }
+  shift
+  for arg in "$@"; do
+    case "$arg" in
+      -*)
+        die "unknown install option: $arg"
+        ;;
+      *)
+        [[ -z "$version" ]] || { usage_cloud_local_install; exit 1; }
+        version="$arg"
+        ;;
+    esac
+  done
+  if [[ "$component" == "all" ]]; then
+    [[ -z "$version" ]] || die "oqtopus cloud-local install all does not accept a version argument."
+    local item
+    for item in "${CLOUD_LOCAL_INSTALL_COMPONENTS[@]}"; do
+      install_cloud_local_component "$item"
+    done
+    return
+  fi
+  if [[ "$version" == branch:* ]]; then
+    local branch
+    branch=$(branch_version_ref "$version")
+    [[ -n "$branch" ]] || die "invalid branch version format: $version (expected branch:<branch>)"
+    clone_and_sync_cloud_local_branch_component "$component" "$branch"
+  else
+    install_cloud_local_component "$component" "$version"
+  fi
+}
+
+cmd_cloud_local_uninstall() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_cloud_local_uninstall
+    return
+  fi
+  validate_cloud_local_env
+  local component=${1:-}
+  local version=${2:-}
+  local target_dir binding_key
+  [[ -n "$component" && -n "$version" && $# -eq 2 ]] || { usage_cloud_local_uninstall; exit 1; }
+  is_in_list "$component" "${CLOUD_LOCAL_INSTALL_COMPONENTS[@]}" || die "unknown component: $component"
+  if is_branch_version "$version"; then
+    target_dir="$ENV_ROOT/$component"
+    [[ -d "$target_dir" ]] || die "branch install not found: $target_dir"
+    rm -rf "$target_dir"
+    binding_key=$(cloud_local_component_binding_key "$component")
+    metadata_unset "$binding_key"
+    log "Removed $target_dir"
+  else
+    target_dir="$INSTALL_ROOT/${component}-${version}"
+    [[ -d "$target_dir" ]] || die "installed release not found: $target_dir"
+    rm -rf "$target_dir"
+    log "Removed $target_dir"
+  fi
+}
+
+cmd_cloud_local_update() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_cloud_local_update
+    return
+  fi
+  validate_cloud_local_env
+  local component=${1:-}
+  [[ -n "$component" && $# -eq 1 ]] || { usage_cloud_local_update; exit 1; }
+  install_cloud_local_component "$component"
+}
+
+cmd_cloud_local_start() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_cloud_local_start
+    return
+  fi
+  validate_cloud_local_env
+  local target=${1:-}
+  local foreground=0
+  [[ -n "$target" ]] || { usage_cloud_local_start; exit 1; }
+  if [[ "${2:-}" == "--foreground" ]]; then
+    [[ "$target" != "all" ]] || die "--foreground is not supported for 'all'."
+    foreground=1
+  fi
+  if [[ "$target" == "all" ]]; then
+    local service
+    for service in "${CLOUD_LOCAL_START_ORDER[@]}"; do
+      cloud_local_start_service "$service"
+    done
+    return
+  fi
+  cloud_local_start_service "$target" "$foreground"
+}
+
+cmd_cloud_local_stop() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_cloud_local_stop
+    return
+  fi
+  validate_cloud_local_env
+  local target=${1:-}
+  [[ -n "$target" && $# -eq 1 ]] || { usage_cloud_local_stop; exit 1; }
+  if [[ "$target" == "all" ]]; then
+    local service status=0
+    for service in "${CLOUD_LOCAL_STOP_ORDER[@]}"; do
+      if ! cloud_local_stop_service "$service"; then
+        status=1
+      fi
+    done
+    return "$status"
+  fi
+  cloud_local_stop_service "$target"
+}
+
+cmd_cloud_local_restart() {
+  if [[ "${1:-}" == "help" || "${1:-}" == "--help" ]]; then
+    usage_cloud_local_restart
+    return
+  fi
+  validate_cloud_local_env
+  local target=${1:-}
+  [[ -n "$target" && $# -eq 1 ]] || { usage_cloud_local_restart; exit 1; }
+  if [[ "$target" == "all" ]]; then
+    local service status=0
+    for service in "${CLOUD_LOCAL_STOP_ORDER[@]}"; do
+      if ! cloud_local_stop_service "$service"; then
+        status=1
+      fi
+    done
+    [[ "$status" -eq 0 ]] || return "$status"
+    for service in "${CLOUD_LOCAL_START_ORDER[@]}"; do
+      cloud_local_start_service "$service"
+    done
+    return
+  fi
+  cloud_local_stop_service "$target"
+  cloud_local_start_service "$target"
+}
+
+cmd_cloud_local_status() {
+  validate_cloud_local_env
+  local service pid_file pid
+  if cloud_local_db_running; then
+    printf 'db: Running\n'
+  else
+    printf 'db: Stopped\n'
+  fi
+  for service in worker user_signup admin provider user; do
+    pid_file="$ENV_ROOT/pids/${service}.pid"
+    if [[ -f "$pid_file" ]]; then
+      pid=$(cat "$pid_file")
+      if pid_alive "$pid"; then
+        printf '%s: Running (PID %s)\n' "$service" "$pid"
+      else
+        printf '%s: Stopped\n' "$service"
+      fi
+    else
+      printf '%s: Stopped\n' "$service"
+    fi
+  done
+}
+
+cmd_cloud_local_info() {
+  validate_cloud_local_env
+  log "=== Cloud-Local Info (.metadata) ==="
+  cat .metadata
+  printf '\n'
+}
+
+# -----------------------------------------------------------------------------
+# cloud-local command dispatcher
+# -----------------------------------------------------------------------------
+
+cmd_cloud_local() {
+  case "${1:-}" in
+    help|--help|"")
+      usage_cloud_local
+      ;;
+    versions)
+      shift
+      cmd_cloud_local_versions "$@"
+      ;;
+    install)
+      shift
+      cmd_cloud_local_install "$@"
+      ;;
+    uninstall)
+      shift
+      cmd_cloud_local_uninstall "$@"
+      ;;
+    update)
+      shift
+      cmd_cloud_local_update "$@"
+      ;;
+    start)
+      shift
+      cmd_cloud_local_start "$@"
+      ;;
+    stop)
+      shift
+      cmd_cloud_local_stop "$@"
+      ;;
+    restart)
+      shift
+      cmd_cloud_local_restart "$@"
+      ;;
+    status)
+      shift
+      [[ $# -eq 0 ]] || die "oqtopus cloud-local status does not accept arguments."
+      cmd_cloud_local_status
+      ;;
+    info)
+      shift
+      [[ $# -eq 0 ]] || die "oqtopus cloud-local info does not accept arguments."
+      cmd_cloud_local_info
+      ;;
+    *)
+      die "unknown cloud-local command: $1"
+      ;;
+  esac
+}
+
 # -----------------------------------------------------------------------------
 # completion subcommand
 # -----------------------------------------------------------------------------
@@ -1207,8 +2032,24 @@ _oqtopus()
           ;;
       esac
       ;;
+    cloud-local)
+      case "${COMP_WORDS[2]}" in
+        install|uninstall|update|versions)
+          COMPREPLY=( $(compgen -W "cloud frontend admin all help --help" -- "$cur") )
+          return 0
+          ;;
+        start|stop|restart)
+          COMPREPLY=( $(compgen -W "db user provider admin user_signup worker all --foreground help --help" -- "$cur") )
+          return 0
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "versions install uninstall update start stop restart status info help --help" -- "$cur") )
+          return 0
+          ;;
+      esac
+      ;;
     init)
-      COMPREPLY=( $(compgen -W "--template backend cloud help --help" -- "$cur") )
+      COMPREPLY=( $(compgen -W "--template backend cloud-local help --help" -- "$cur") )
       return 0
       ;;
     completion)
@@ -1216,7 +2057,7 @@ _oqtopus()
       return 0
       ;;
     *)
-      COMPREPLY=( $(compgen -W "init backend completion version help --help --version" -- "$cur") )
+      COMPREPLY=( $(compgen -W "init backend cloud-local completion version help --help --version" -- "$cur") )
       return 0
       ;;
   esac
@@ -1230,17 +2071,20 @@ completion_zsh() {
 #compdef oqtopus
 
 _oqtopus() {
-  local -a commands backend_commands install_components build_targets update_components start_services services device_status shells templates
-  commands=(init backend completion version help --help --version)
+  local -a commands backend_commands cloud_local_commands install_components build_targets update_components start_services services device_status cloud_local_components cloud_local_services shells templates
+  commands=(init backend cloud-local completion version help --help --version)
   backend_commands=(install build versions uninstall update start stop restart status device-status info help --help)
+  cloud_local_commands=(versions install uninstall update start stop restart status info help --help)
   install_components=(engine tranqu gateway all --skip-sse-build help --help)
   build_targets=(sse-runtime help --help)
   update_components=(engine tranqu gateway help --help)
   start_services=(core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help)
   services=(core sse_engine mitigator estimator combiner tranqu gateway all help --help)
   device_status=(show active inactive maintenance help --help)
+  cloud_local_components=(cloud frontend admin all help --help)
+  cloud_local_services=(db user provider admin user_signup worker all --foreground help --help)
   shells=(bash zsh fish)
-  templates=(backend cloud)
+  templates=(backend cloud-local)
 
   case $words[2] in
     backend)
@@ -1252,6 +2096,13 @@ _oqtopus() {
         stop|restart) compadd -- $services ;;
         device-status) compadd -- $device_status ;;
         *) compadd -- $backend_commands ;;
+      esac
+      ;;
+    cloud-local)
+      case $words[3] in
+        install|uninstall|update|versions) compadd -- $cloud_local_components ;;
+        start|stop|restart) compadd -- $cloud_local_services ;;
+        *) compadd -- $cloud_local_commands ;;
       esac
       ;;
     init) compadd -- --template help --help $templates ;;
@@ -1266,9 +2117,9 @@ EOF
 
 completion_fish() {
   cat <<'EOF'
-complete -c oqtopus -f -n "__fish_use_subcommand" -a "init backend completion version help --help --version"
+complete -c oqtopus -f -n "__fish_use_subcommand" -a "init backend cloud-local completion version help --help --version"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
-complete -c oqtopus -f -n "__fish_seen_subcommand_from init" -a "--template backend cloud help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from init" -a "--template backend cloud-local help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend" -a "install build versions uninstall update start stop restart status device-status info help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from install" -a "engine tranqu gateway all --skip-sse-build help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from build" -a "sse-runtime help --help"
@@ -1276,6 +2127,9 @@ complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from start" -a "core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from stop restart" -a "core sse_engine mitigator estimator combiner tranqu gateway all help --help"
 complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from device-status" -a "show active inactive maintenance help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from cloud-local" -a "versions install uninstall update start stop restart status info help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from cloud-local; and __fish_seen_subcommand_from install uninstall update versions" -a "cloud frontend admin all help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from cloud-local; and __fish_seen_subcommand_from start stop restart" -a "db user provider admin user_signup worker all --foreground help --help"
 EOF
 }
 
@@ -1314,6 +2168,10 @@ main() {
     backend)
       shift
       cmd_backend "$@"
+      ;;
+    cloud-local)
+      shift
+      cmd_cloud_local "$@"
       ;;
     completion)
       shift
