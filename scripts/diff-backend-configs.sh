@@ -272,7 +272,7 @@ _diff_backend_configs() {
   local has_service=false word
 
   case "${words[-2]}" in
-    --file)     compadd -- config.yaml logging.yaml; return ;;
+    --file)     compadd -- config.yaml logging.yaml device_topology_sim.json; return ;;
     completion) compadd -- bash zsh fish; return ;;
   esac
 
