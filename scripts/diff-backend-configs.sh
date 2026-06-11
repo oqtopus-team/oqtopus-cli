@@ -295,20 +295,24 @@ ZSH
 
 completion_fish() {
   cat <<'FISH'
+set -l cmds diff-backend-configs diff-backend-configs.sh scripts/diff-backend-configs.sh
 set -l services core sse_engine combiner estimator mitigator tranqu gateway
+set -l files config.yaml logging.yaml device_topology_sim.json
 
-complete -c diff-backend-configs -f \
-  -n "not __fish_seen_subcommand_from $services completion" \
-  -a "$services"
-complete -c diff-backend-configs -f \
-  -n "not __fish_seen_subcommand_from $services completion" \
-  -a "completion --file -h --help"
-complete -c diff-backend-configs -f \
-  -n "__fish_seen_subcommand_from completion" \
-  -a "bash zsh fish"
-complete -c diff-backend-configs \
-  -n "contains -- --file (commandline -opc)" \
-  -a "config.yaml logging.yaml"
+for cmd in $cmds
+  complete -c $cmd -f \
+    -n "not __fish_seen_subcommand_from $services completion" \
+    -a "$services"
+  complete -c $cmd -f \
+    -n "not __fish_seen_subcommand_from $services completion" \
+    -a "completion --file -h --help"
+  complete -c $cmd -f \
+    -n "__fish_seen_subcommand_from completion" \
+    -a "bash zsh fish"
+  complete -c $cmd \
+    -n "contains -- --file (commandline -opc)" \
+    -a "$files"
+end
 FISH
 }
 
