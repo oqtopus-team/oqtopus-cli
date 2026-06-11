@@ -259,7 +259,7 @@ _diff_backend_configs() {
     COMPREPLY=( $(compgen -W "--file" -- "$cur") )
   fi
 }
-complete -F _diff_backend_configs diff-backend-configs
+complete -F _diff_backend_configs diff-backend-configs diff-backend-configs.sh scripts/diff-backend-configs.sh
 BASH
 }
 
