@@ -317,7 +317,7 @@ FISH
 }
 
 cmd_completion() {
-  [[ $# -eq 1 ]] || { printf 'Usage: diff-backend-configs completion <bash|zsh|fish>\n' >&2; exit 1; }
+  [[ $# -eq 1 ]] || { printf 'Usage: diff-backend-configs.sh completion <bash|zsh|fish>\n' >&2; exit 1; }
   case "$1" in
     bash) completion_bash ;;
     zsh)  completion_zsh ;;
