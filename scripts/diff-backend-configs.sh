@@ -173,8 +173,8 @@ compare_service() {
       printf '%s\n\n' "$diff_output"
       any_problem=true
     else
-      printf 'DIFF ERROR (exit %s): %s\n\n' "$diff_exit" "$local_file"
-      return "$diff_exit"
+      printf 'DIFF ERROR (exit %d): %s\n\n' "$diff_exit" "$local_rel"
+      any_problem=true
     fi
 
   done < <(service_file_mappings "$service")
