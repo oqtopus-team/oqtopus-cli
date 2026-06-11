@@ -214,12 +214,12 @@ Exit status:
   1  One or more files differ
 
 Examples:
-  diff-backend-configs
-  diff-backend-configs core
-  diff-backend-configs core v2.0.0
-  diff-backend-configs tranqu branch:main
-  diff-backend-configs --file config.yaml
-  diff-backend-configs core --file logging.yaml
+  diff-backend-configs.sh
+  diff-backend-configs.sh core
+  diff-backend-configs.sh core v2.0.0
+  diff-backend-configs.sh tranqu branch:main
+  diff-backend-configs.sh --file config.yaml
+  diff-backend-configs.sh core --file logging.yaml
 EOF
 }
 
