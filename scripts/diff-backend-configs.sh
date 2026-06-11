@@ -169,9 +169,12 @@ compare_service() {
 
     if [[ $diff_exit -eq 0 ]]; then
       printf 'identical\n\n'
-    else
+    elif [[ $diff_exit -eq 1 ]]; then
       printf '%s\n\n' "$diff_output"
       any_problem=true
+    else
+      printf 'DIFF ERROR (exit %s): %s\n\n' "$diff_exit" "$local_file"
+      return "$diff_exit"
     fi
 
   done < <(service_file_mappings "$service")
