@@ -2,13 +2,17 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
-.PHONY: install docs-lint docs-build docs-serve help
+.PHONY: install diff-backend-configs docs-lint docs-build docs-serve help
 
 install: ## Install dependencies and configure git hooks and commit template
 	@uv sync --all-groups
 	@if [ -d .git ]; then \
 		git config --local commit.template .gitmessage; \
 	fi
+	@chmod +x scripts/diff-backend-configs.sh
+
+diff-backend-configs: ## Compare backend template configs against upstream repositories
+	@scripts/diff-backend-configs.sh
 
 docs-lint: ## Run documentation linting
 	@uv run pymarkdownlnt scan docs

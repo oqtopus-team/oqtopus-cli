@@ -71,6 +71,7 @@ If you are using OQTOPUS CLI for the first time, start here:
 
 - [Development Flow](./developer_guidelines/development_flow.md)
 - [Setup Development Environment](./developer_guidelines/setup.md)
+- [diff-backend-configs.sh](./developer_guidelines/diff-backend-configs.md)
 - [How to Contribute](./CONTRIBUTING.md)
 - [Code of Conduct](https://github.com/oqtopus-team/.github/blob/main/CODE_OF_CONDUCT.md)
 - [Security](https://github.com/oqtopus-team/.github/blob/main/SECURITY.md)
