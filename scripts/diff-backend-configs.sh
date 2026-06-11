@@ -236,7 +236,7 @@ _diff_backend_configs() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   if [[ "$prev" == "--file" ]]; then
-    COMPREPLY=( $(compgen -W "config.yaml logging.yaml" -- "$cur") )
+    COMPREPLY=( $(compgen -W "config.yaml logging.yaml device_topology_sim.json" -- "$cur") )
     return 0
   fi
 
