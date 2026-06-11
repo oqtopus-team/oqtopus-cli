@@ -289,7 +289,7 @@ _diff_backend_configs() {
   fi
 }
 
-_diff_backend_configs "$@"
+compdef _diff_backend_configs diff-backend-configs diff-backend-configs.sh scripts/diff-backend-configs.sh
 ZSH
 }
 
