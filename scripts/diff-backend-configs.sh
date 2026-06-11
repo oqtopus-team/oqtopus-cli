@@ -191,8 +191,8 @@ compare_service() {
 usage() {
   cat <<'EOF'
 Usage:
-  diff-backend-configs [<service> [<version>]] [--file <filename>]
-  diff-backend-configs completion <bash|zsh|fish>
+  diff-backend-configs.sh [<service> [<version>]] [--file <filename>]
+  diff-backend-configs.sh completion <bash|zsh|fish>
 
 Compare files in templates/backend/config/ against the corresponding files
 in the upstream repositories.
