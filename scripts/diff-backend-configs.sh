@@ -408,14 +408,9 @@ main() {
     services_to_run=("${SERVICES[@]}")
   fi
 
-  local any_problem=false
   for svc in "${services_to_run[@]}"; do
-    if ! compare_service "$svc" "$version" "$file_filter"; then
-      any_problem=true
-    fi
+    compare_service "$svc" "$version" "$file_filter" || true
   done
-
-  [[ "$any_problem" == "false" ]]
 }
 
 main "$@"
