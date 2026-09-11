@@ -47,7 +47,7 @@ fn version_uses_the_compiled_package_version() {
 #[test]
 fn unmigrated_route_honors_fallback_forbidden() {
     // Cover both an unknown top-level command and a known command whose subcommand is not migrated.
-    for args in [&["not-yet-migrated"][..], &["backend", "status"]] {
+    for args in [&["not-yet-migrated"][..], &["backend", "device-status"]] {
         let output = run_rust(args);
 
         assert_eq!(output.status.code(), Some(125), "wrong status for {args:?}");

@@ -15,7 +15,7 @@ use std::env;
 use std::io;
 use std::process;
 
-use backend::backend_info;
+use backend::{backend_info, backend_status};
 use cli::{Route, route};
 use legacy::run_legacy;
 use version::version_info;
@@ -38,6 +38,10 @@ fn main() {
         Route::BackendInfo => backend_info(&args[2..]).and_then(|info| {
             text::write_backend_info(&mut io::stdout().lock(), &info)
                 .map_err(|error| format!("failed to write backend info: {error}"))
+        }),
+        Route::BackendStatus => backend_status(&args[2..]).and_then(|status| {
+            text::write_backend_status(&mut io::stdout().lock(), &status)
+                .map_err(|error| format!("failed to write backend status: {error}"))
         }),
         Route::Legacy => run_legacy(&args),
     };

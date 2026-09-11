@@ -2,9 +2,94 @@ use std::fs::{self, Permissions};
 use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::ExitStatusExt;
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 
 use crate::harness::{EnvironmentTemplate, TestContext};
+
+const BACKEND_SERVICES: [&str; 7] = [
+    "core",
+    "sse_engine",
+    "mitigator",
+    "estimator",
+    "combiner",
+    "tranqu",
+    "gateway",
+];
+
+// Covers the three pid-file states in one ordered artifact: a live PID is Running, while a PID
+// whose process exited and a nonnumeric PID are both Stopped. The row order and spelling are part
+// of the Manager's parsing contract.
+#[test]
+fn backend_status_reports_services_in_manager_compatible_order() {
+    let context = TestContext::new();
+    context.create_environment(EnvironmentTemplate::Backend, &[]);
+    let pids = context.work_dir().join("pids");
+    fs::create_dir(&pids).expect("create fixture pid directory");
+
+    // The test process remains alive while the CLI checks it.
+    let running_pid = std::process::id();
+    fs::write(pids.join("core.pid"), format!("{running_pid}\n")).expect("write running pid");
+
+    // Record the PID of a process that really existed and has been reaped, matching a pid file left
+    // behind after a service exits.
+    let mut exited_process = Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("start stale-pid fixture process");
+    let stale_pid = exited_process.id();
+    exited_process
+        .kill()
+        .expect("stop stale-pid fixture process");
+    exited_process
+        .wait()
+        .expect("reap stale-pid fixture process");
+    fs::write(pids.join("tranqu.pid"), format!("{stale_pid}\n")).expect("write stale pid");
+    fs::write(pids.join("gateway.pid"), "not-a-pid\n").expect("write invalid pid");
+
+    let output = context.run_snapshot_subject(["backend", "status"]);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout.clone()).expect("status should be UTF-8");
+    let rows: Vec<_> = stdout.lines().collect();
+    assert_eq!(rows.len(), BACKEND_SERVICES.len());
+    for (row, service) in rows.iter().zip(BACKEND_SERVICES) {
+        assert!(
+            row.starts_with(&format!("{service}: ")),
+            "service row is out of order: {row}"
+        );
+    }
+    assert_eq!(rows[0], format!("core: Running (PID {running_pid})"));
+    assert_eq!(rows[5], "tranqu: Stopped");
+    assert_eq!(rows[6], "gateway: Stopped");
+
+    let rendered = context
+        .render_output(&output)
+        .replace(&format!("PID {running_pid}"), "PID <PID>");
+    insta::assert_snapshot!("backend_status", rendered);
+}
+
+#[test]
+fn backend_status_rejects_arguments() {
+    let context = TestContext::new();
+
+    // No environment is created deliberately: argument validation must win over the otherwise
+    // applicable missing-.metadata error, matching the Bash dispatcher.
+    insta::assert_snapshot!(
+        "backend_status_extra_argument",
+        context.render_output(&context.run_snapshot_subject(["backend", "status", "unexpected"]))
+    );
+}
+
+#[test]
+fn backend_status_rejects_missing_metadata() {
+    let context = TestContext::new();
+
+    insta::assert_snapshot!(
+        "backend_status_no_metadata",
+        context.render_output(&context.run_snapshot_subject(["backend", "status"]))
+    );
+}
 
 #[test]
 fn backend_info_outputs_metadata() {
@@ -18,7 +103,8 @@ fn backend_info_outputs_metadata() {
 
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
-    // Pin the line-oriented key=value contract consumed by the Manager separately from formatting.
+    // The snapshot pins the complete byte-oriented output, while these focused assertions pin the
+    // individual key=value fields consumed by the Manager.
     let stdout = String::from_utf8(output.stdout.clone()).expect("metadata should be UTF-8");
     let fields: std::collections::HashMap<_, _> = stdout
         .lines()
@@ -63,6 +149,8 @@ fn backend_info_rejects_bare_template_key() {
 
 #[test]
 fn backend_info_accepts_crlf_and_preserves_output_bytes() {
+    // Rust accepts CRLF during validation, but `info` must still emit and retain the original bytes
+    // instead of normalizing line endings or regenerating the metadata.
     let context = TestContext::new();
     let metadata = format!(
         "template=backend\r\ninstall_root={}/releases\r\nenvironment_root={}\r\nengine_version=v1.2.3\r\n",
@@ -89,6 +177,7 @@ fn backend_info_accepts_crlf_and_preserves_output_bytes() {
 fn backend_info_rejects_arguments() {
     let context = TestContext::new();
 
+    // As with `status`, the absent environment proves argument validation happens first.
     let output = context.run_snapshot_subject(["backend", "info", "unexpected"]);
 
     insta::assert_snapshot!(
@@ -149,6 +238,8 @@ fn backend_info_rejects_mismatched_environment_root() {
 
 #[test]
 fn backend_info_migrates_legacy_metadata_keys() {
+    // A read-only command still performs the compatibility migration, so this test checks both the
+    // rewritten file and the metadata bytes printed after that rewrite.
     let context = TestContext::new();
     context.write_metadata(format!(
         "template=backend\ninstall_root={}/releases\nenv_name=legacy\nenv_root={}\nengine_version=v1.2.3\n",
@@ -210,6 +301,8 @@ fn backend_info_does_not_migrate_metadata_unwritable_by_an_unprivileged_owner() 
 
 #[test]
 fn backend_info_exits_silently_on_broken_stdout_pipe() {
+    // The large value prevents the entire response from fitting in the pipe before its reader is
+    // closed. The CLI should then receive SIGPIPE without printing a secondary write error.
     let context = TestContext::new();
     let metadata = format!(
         "template=backend\ninstall_root={}/releases\nenvironment_root={}\npadding={}\n",

@@ -5,7 +5,7 @@
 
 use std::io::{self, Write};
 
-use crate::backend::BackendInfo;
+use crate::backend::{BackendInfo, BackendStatus};
 use crate::version::VersionInfo;
 
 const TOP_LEVEL_HELP: &str = "\
@@ -36,6 +36,17 @@ pub(crate) fn write_version(out: &mut impl Write, info: &VersionInfo) -> io::Res
 
 pub(crate) fn write_backend_info(out: &mut impl Write, info: &BackendInfo) -> io::Result<()> {
     out.write_all(&info.metadata)?;
+    out.flush()
+}
+
+pub(crate) fn write_backend_status(out: &mut impl Write, status: &BackendStatus) -> io::Result<()> {
+    for service in &status.services {
+        if let Some(pid) = service.pid {
+            writeln!(out, "{}: Running (PID {pid})", service.name)?;
+        } else {
+            writeln!(out, "{}: Stopped", service.name)?;
+        }
+    }
     out.flush()
 }
 

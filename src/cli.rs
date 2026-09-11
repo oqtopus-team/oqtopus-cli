@@ -10,6 +10,7 @@ pub(crate) enum Route {
     Help,
     Version,
     BackendInfo,
+    BackendStatus,
     Legacy,
 }
 
@@ -29,6 +30,12 @@ pub(crate) fn route(args: &[OsString]) -> Route {
                 && args.get(1).is_some_and(|arg| arg == OsStr::new("info")) =>
         {
             Route::BackendInfo
+        }
+        Some(command)
+            if command == OsStr::new("backend")
+                && args.get(1).is_some_and(|arg| arg == OsStr::new("status")) =>
+        {
+            Route::BackendStatus
         }
         Some(_) => Route::Legacy,
     }
