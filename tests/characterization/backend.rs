@@ -1,8 +1,12 @@
+use std::ffi::CString;
 use std::fs::{self, Permissions};
 use std::io::{BufRead, BufReader};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::harness::{EnvironmentTemplate, TestContext};
 
@@ -67,6 +71,58 @@ fn backend_status_reports_services_in_manager_compatible_order() {
         .render_output(&output)
         .replace(&format!("PID {running_pid}"), "PID <PID>");
     insta::assert_snapshot!("backend_status", rendered);
+}
+
+#[test]
+fn backend_status_treats_fifo_pid_paths_as_stopped() {
+    // Bash checks [[ -f ]] before reading a PID path. Keep this compatibility case on the Rust
+    // subject so an implementation that reads a FIFO blocks the test instead of returning status.
+    let context = TestContext::new();
+    context.create_environment(EnvironmentTemplate::Backend, &[]);
+    let pids = context.work_dir().join("pids");
+    fs::create_dir(&pids).expect("create fixture pid directory");
+
+    let fifo = pids.join("core.pid");
+    let fifo_path = CString::new(fifo.as_os_str().as_bytes()).expect("FIFO path has no NUL");
+    // SAFETY: the path points to a temporary test directory and the mode is valid.
+    let result = unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) };
+    assert_eq!(
+        result,
+        0,
+        "create FIFO: {}",
+        std::io::Error::last_os_error()
+    );
+
+    let mut child = context
+        .rust_command(["backend", "status"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("start Rust CLI");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(None) => {
+                child.kill().expect("stop hung Rust CLI");
+                let _ = child.wait();
+                panic!("backend status did not return for a FIFO PID path");
+            }
+            Err(error) => panic!("check Rust CLI status: {error}"),
+        }
+    }
+
+    let output = child.wait_with_output().expect("wait for Rust CLI");
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("status should be UTF-8"),
+        BACKEND_SERVICES
+            .iter()
+            .map(|service| format!("{service}: Stopped\n"))
+            .collect::<String>()
+    );
 }
 
 #[test]

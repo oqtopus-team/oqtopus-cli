@@ -61,6 +61,9 @@ pub(crate) fn backend_status(args: &[OsString]) -> Result<BackendStatus, String>
 }
 
 fn running_pid(path: &Path) -> Option<u32> {
+    if !path.is_file() {
+        return None;
+    }
     let contents = fs::read_to_string(path).ok()?;
     // Command substitution in Bash removes trailing newlines before the numeric check.
     let candidate = contents.trim_end_matches('\n');
