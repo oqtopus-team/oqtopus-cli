@@ -17,10 +17,13 @@ use std::env;
 use std::io;
 use std::process;
 
-use backend::{backend_info, backend_status};
+use backend::{backend_device_status, backend_info, backend_status};
 use cli::{Route, route};
 use legacy::run_legacy;
 use version::version_info;
+
+const EXIT_SUCCESS: i32 = 0;
+const EXIT_FAILURE: i32 = 1;
 
 fn main() {
     // Rust ignores SIGPIPE by default. CLI pipelines expect the traditional Unix behavior: exit
@@ -35,24 +38,38 @@ fn main() {
     // command's own argument list. Help, version, and legacy routes ignore it.
     let command_args = args.get(2..).unwrap_or_default();
 
-    let outcome = match route(&args) {
+    // Commands report their own exit status; a returned message is always a failure.
+    let outcome: Result<i32, String> = match route(&args) {
         Route::Help => text::write_help(&mut io::stdout().lock())
+            .map(|()| EXIT_SUCCESS)
             .map_err(|error| format!("failed to write help: {error}")),
         Route::Version => text::write_version(&mut io::stdout().lock(), &version_info())
+            .map(|()| EXIT_SUCCESS)
             .map_err(|error| format!("failed to write version: {error}")),
         Route::BackendInfo => backend_info(command_args).and_then(|info| {
             text::write_backend_info(&mut io::stdout().lock(), &info)
+                .map(|()| EXIT_SUCCESS)
                 .map_err(|error| format!("failed to write backend info: {error}"))
         }),
         Route::BackendStatus => backend_status(command_args).and_then(|status| {
             text::write_backend_status(&mut io::stdout().lock(), &status)
+                .map(|()| EXIT_SUCCESS)
                 .map_err(|error| format!("failed to write backend status: {error}"))
+        }),
+        Route::BackendDeviceStatus => backend_device_status(command_args).and_then(|status| {
+            text::write_backend_device_status(&mut io::stdout().lock(), &status)
+                .map(|()| status.exit_code())
+                .map_err(|error| format!("failed to write backend device status: {error}"))
         }),
         Route::Legacy => run_legacy(&args),
     };
 
-    if let Err(error) = outcome {
-        let _ = text::write_error(&mut io::stderr().lock(), &error);
-        process::exit(1);
+    match outcome {
+        Ok(EXIT_SUCCESS) => {}
+        Ok(code) => process::exit(code),
+        Err(error) => {
+            let _ = text::write_error(&mut io::stderr().lock(), &error);
+            process::exit(EXIT_FAILURE);
+        }
     }
 }

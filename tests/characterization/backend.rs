@@ -385,3 +385,114 @@ fn backend_info_exits_silently_on_broken_stdout_pipe() {
     assert_eq!(output.status.signal(), Some(libc::SIGPIPE));
     assert!(output.stderr.is_empty());
 }
+
+#[test]
+fn backend_device_status_shows_and_updates_the_status_file() {
+    let context = TestContext::new();
+    context.create_environment(EnvironmentTemplate::Backend, &[]);
+    let gateway = context.work_dir().join("config/gateway");
+    fs::create_dir_all(&gateway).expect("create gateway config directory");
+    let status_file = gateway.join("device_status");
+    fs::write(&status_file, b"inactive\n").expect("write initial device status");
+
+    let show = context.run_snapshot_subject(["backend", "device-status", "show"]);
+    assert!(show.status.success());
+    assert!(show.stderr.is_empty());
+    assert_eq!(show.stdout, b"inactive\n");
+
+    let active = context.run_snapshot_subject(["backend", "device-status", "active"]);
+    assert!(active.status.success());
+    assert!(active.stderr.is_empty());
+    assert_eq!(active.stdout, b"active\n");
+    assert_eq!(
+        fs::read(&status_file).expect("read active device status"),
+        b"active\n"
+    );
+
+    for status in ["inactive", "maintenance"] {
+        let output = context.run_snapshot_subject(["backend", "device-status", status]);
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert_eq!(output.stdout, format!("{status}\n").as_bytes());
+        assert_eq!(
+            fs::read(&status_file).expect("read device status"),
+            format!("{status}\n").as_bytes()
+        );
+    }
+
+    insta::assert_snapshot!("backend_device_status_show", context.render_output(&show));
+    insta::assert_snapshot!(
+        "backend_device_status_active",
+        context.render_output(&active)
+    );
+}
+
+#[test]
+fn backend_device_status_rejects_unknown_action() {
+    let context = TestContext::new();
+    context.create_environment(EnvironmentTemplate::Backend, &[]);
+    let gateway = context.work_dir().join("config/gateway");
+    fs::create_dir_all(&gateway).expect("create gateway config directory");
+    fs::write(gateway.join("device_status"), b"active\n").expect("write device status");
+
+    insta::assert_snapshot!(
+        "backend_device_status_unknown_action",
+        context.render_output(&context.run_snapshot_subject([
+            "backend",
+            "device-status",
+            "unknown"
+        ]))
+    );
+}
+
+#[test]
+fn backend_device_status_reports_missing_status_file() {
+    let context = TestContext::new();
+    context.create_environment(EnvironmentTemplate::Backend, &[]);
+
+    insta::assert_snapshot!(
+        "backend_device_status_missing_file",
+        context.render_output(&context.run_snapshot_subject(["backend", "device-status", "show"]))
+    );
+}
+
+#[test]
+fn backend_device_status_help_does_not_require_an_environment() {
+    let context = TestContext::new();
+    let canonical = context.run_snapshot_subject(["backend", "device-status", "help"]);
+
+    assert!(canonical.status.success());
+    assert!(canonical.stderr.is_empty());
+    assert_eq!(
+        canonical.stdout,
+        b"Usage:\n  oqtopus backend device-status <show|active|inactive|maintenance>\n"
+    );
+    let alias = context.run_snapshot_subject(["backend", "device-status", "--help", "ignored"]);
+    assert!(alias.status.success());
+    assert_eq!(alias.stdout, canonical.stdout);
+    assert!(alias.stderr.is_empty());
+}
+
+#[test]
+fn backend_device_status_ignores_arguments_after_a_valid_action() {
+    let context = TestContext::new();
+    context.create_environment(EnvironmentTemplate::Backend, &[]);
+    let gateway = context.work_dir().join("config/gateway");
+    fs::create_dir_all(&gateway).expect("create gateway config directory");
+    let status_file = gateway.join("device_status");
+    fs::write(&status_file, b"inactive\n").expect("write device status");
+
+    let show = context.run_snapshot_subject(["backend", "device-status", "show", "ignored"]);
+    assert!(show.status.success());
+    assert_eq!(show.stdout, b"inactive\n");
+    assert!(show.stderr.is_empty());
+
+    let update = context.run_snapshot_subject(["backend", "device-status", "active", "ignored"]);
+    assert!(update.status.success());
+    assert_eq!(update.stdout, b"active\n");
+    assert!(update.stderr.is_empty());
+    assert_eq!(
+        fs::read(status_file).expect("read device status"),
+        b"active\n"
+    );
+}

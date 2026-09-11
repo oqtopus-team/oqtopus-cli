@@ -9,6 +9,7 @@ pub(crate) enum Route {
     Version,
     BackendInfo,
     BackendStatus,
+    BackendDeviceStatus,
     Legacy,
 }
 
@@ -23,6 +24,7 @@ pub(crate) fn route(args: &[String]) -> Route {
         (Some("version" | "--version"), _) => Route::Version,
         (Some("backend"), Some("info")) => Route::BackendInfo,
         (Some("backend"), Some("status")) => Route::BackendStatus,
+        (Some("backend"), Some("device-status")) => Route::BackendDeviceStatus,
         _ => Route::Legacy,
     }
 }

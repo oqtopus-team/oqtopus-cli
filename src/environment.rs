@@ -1,13 +1,14 @@
 //! Validation shared by commands that operate inside an OQTOPUS environment.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::metadata::{metadata_get, migrate_metadata_keys};
 
 /// A directory validated as an environment for one template.
 pub(crate) struct Environment {
     pub(crate) metadata: Vec<u8>,
+    pub(crate) root: PathBuf,
 }
 
 /// Validates that the current directory is an environment for `template_name`.
@@ -16,14 +17,13 @@ pub(crate) fn validate_environment(template_name: &str) -> Result<Environment, S
     // Presence is part of validation even where no native command reads the value yet.
     metadata.require("install_root")?;
 
-    Ok(Environment {
-        metadata: metadata.contents,
-    })
+    Ok(metadata.into_environment())
 }
 
 /// Metadata of a directory whose template and `environment_root` have been validated.
 struct ValidatedMetadata {
     contents: Vec<u8>,
+    root: PathBuf,
     // Parse through a lossy view, but retain the original bytes for output. This preserves the
     // legacy command's byte-for-byte behavior after the fields required for validation are found.
     text: String,
@@ -34,6 +34,13 @@ impl ValidatedMetadata {
         metadata_get(&self.text, key)
             .map(str::to_owned)
             .ok_or_else(|| missing(key))
+    }
+
+    fn into_environment(self) -> Environment {
+        Environment {
+            metadata: self.contents,
+            root: self.root,
+        }
     }
 }
 
@@ -59,7 +66,8 @@ fn validated_metadata(template_name: &str) -> Result<ValidatedMetadata, String> 
 
     let root = metadata_get(&text, "environment_root")
         .or_else(|| metadata_get(&text, "env_root"))
-        .ok_or_else(|| missing("environment_root"))?;
+        .ok_or_else(|| missing("environment_root"))?
+        .to_owned();
     let current = fs::canonicalize(".")
         .map_err(|error| format!("failed to resolve current directory: {error}"))?;
     if root != current.to_string_lossy() {
@@ -69,7 +77,11 @@ fn validated_metadata(template_name: &str) -> Result<ValidatedMetadata, String> 
         ));
     }
 
-    Ok(ValidatedMetadata { contents, text })
+    Ok(ValidatedMetadata {
+        contents,
+        text,
+        root: PathBuf::from(root),
+    })
 }
 
 fn missing(key: &str) -> String {

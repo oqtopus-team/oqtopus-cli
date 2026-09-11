@@ -5,7 +5,7 @@
 
 use std::io::{self, Write};
 
-use crate::backend::{BackendInfo, BackendStatus};
+use crate::backend::{BackendDeviceStatus, BackendInfo, BackendStatus};
 use crate::version::VersionInfo;
 
 const TOP_LEVEL_HELP: &str = "\
@@ -46,6 +46,25 @@ pub(crate) fn write_backend_status(out: &mut impl Write, status: &BackendStatus)
         } else {
             writeln!(out, "{}: Stopped", service.name)?;
         }
+    }
+    out.flush()
+}
+
+const BACKEND_DEVICE_STATUS_USAGE: &str = "\
+Usage:
+  oqtopus backend device-status <show|active|inactive|maintenance>
+";
+
+pub(crate) fn write_backend_device_status(
+    out: &mut impl Write,
+    status: &BackendDeviceStatus,
+) -> io::Result<()> {
+    match status {
+        BackendDeviceStatus::Help | BackendDeviceStatus::Invalid => {
+            out.write_all(BACKEND_DEVICE_STATUS_USAGE.as_bytes())?
+        }
+        BackendDeviceStatus::Show(contents) => out.write_all(contents)?,
+        BackendDeviceStatus::Updated(action) => writeln!(out, "{action}")?,
     }
     out.flush()
 }

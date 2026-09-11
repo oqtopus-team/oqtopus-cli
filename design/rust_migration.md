@@ -222,6 +222,10 @@ or a fixed ratio of snapshot, integration, and unit tests.
   before reaching either implementation, which is the standard library's own
   handling of the case. This is pinned by a Rust-only test rather than a
   characterization case, because Bash accepts the same invocation.
+- `backend device-status` reports a failed write as
+  `Error: failed to write device status file: <reason>` rather than the shell
+  redirection error Bash emits. The exit status is unchanged, and no consumer
+  parses this message.
 
 ## Completion during the hybrid period
 
