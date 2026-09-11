@@ -9,24 +9,48 @@ use crate::metadata::{metadata_get, migrate_metadata_keys};
 pub(crate) struct Environment {
     pub(crate) metadata: Vec<u8>,
     pub(crate) root: PathBuf,
+    pub(crate) install_root: PathBuf,
+}
+
+/// An [`Environment`] whose `environment_name` was required during validation.
+///
+/// Only [`validate_named_environment`] constructs this, so a caller cannot read the name of an
+/// environment that was never checked for one.
+pub(crate) struct NamedEnvironment {
+    pub(crate) environment: Environment,
+    pub(crate) name: String,
 }
 
 /// Validates that the current directory is an environment for `template_name`.
 pub(crate) fn validate_environment(template_name: &str) -> Result<Environment, String> {
     let metadata = validated_metadata(template_name)?;
-    // Presence is part of validation even where no native command reads the value yet.
-    metadata.require("install_root")?;
+    let install_root = metadata.require("install_root")?;
 
-    Ok(metadata.into_environment())
+    Ok(metadata.into_environment(install_root))
+}
+
+/// Validates the current directory and additionally requires `environment_name`.
+///
+/// The name is looked up before `install_root` so that metadata missing both reports the same
+/// field as the legacy CLI.
+pub(crate) fn validate_named_environment(template_name: &str) -> Result<NamedEnvironment, String> {
+    let metadata = validated_metadata(template_name)?;
+    let name = metadata.require_compat("environment_name", "env_name")?;
+    let install_root = metadata.require("install_root")?;
+
+    Ok(NamedEnvironment {
+        environment: metadata.into_environment(install_root),
+        name,
+    })
 }
 
 /// Metadata of a directory whose template and `environment_root` have been validated.
 struct ValidatedMetadata {
     contents: Vec<u8>,
-    root: PathBuf,
     // Parse through a lossy view, but retain the original bytes for output. This preserves the
     // legacy command's byte-for-byte behavior after the fields required for validation are found.
     text: String,
+    root: PathBuf,
 }
 
 impl ValidatedMetadata {
@@ -36,10 +60,20 @@ impl ValidatedMetadata {
             .ok_or_else(|| missing(key))
     }
 
-    fn into_environment(self) -> Environment {
+    /// Reads `key`, falling back to a pre-migration spelling for metadata that could not be
+    /// rewritten in place.
+    fn require_compat(&self, key: &str, legacy_key: &str) -> Result<String, String> {
+        metadata_get(&self.text, key)
+            .or_else(|| metadata_get(&self.text, legacy_key))
+            .map(str::to_owned)
+            .ok_or_else(|| missing(key))
+    }
+
+    fn into_environment(self, install_root: String) -> Environment {
         Environment {
             metadata: self.contents,
             root: self.root,
+            install_root: PathBuf::from(install_root),
         }
     }
 }

@@ -1,6 +1,7 @@
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -70,6 +71,15 @@ impl TestContext {
 
     pub fn write_metadata(&self, contents: impl AsRef<[u8]>) {
         fs::write(self.work.join(".metadata"), contents).expect("write fixture metadata");
+    }
+
+    pub fn write_executable(&self, name: &str, contents: impl AsRef<[u8]>) {
+        let bin = self.root.join("bin");
+        fs::create_dir_all(&bin).expect("create fixture bin directory");
+        let path = bin.join(name);
+        fs::write(&path, contents).expect("write fixture executable");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))
+            .expect("make fixture executable runnable");
     }
 
     pub fn run_snapshot_subject<I, S>(&self, args: I) -> Output
@@ -144,10 +154,14 @@ impl TestContext {
     fn configure(&self, command: &mut Command) {
         // Start from a deliberately small, deterministic environment. PATH is retained only so the
         // legacy runner can locate Bash; all filesystem-facing variables point into the sandbox.
+        let fixture_path = env::join_paths(std::iter::once(self.root.join("bin")).chain(
+            env::split_paths(&env::var_os("PATH").expect("PATH should be set")),
+        ))
+        .expect("construct fixture PATH");
         command
             .current_dir(&self.work)
             .env_clear()
-            .env("PATH", env::var_os("PATH").expect("PATH should be set"))
+            .env("PATH", fixture_path)
             .env("HOME", self.root.join("home"))
             .env("TMPDIR", self.root.join("tmp"))
             .env("XDG_DATA_HOME", self.root.join("xdg-data"))

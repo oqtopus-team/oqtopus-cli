@@ -226,6 +226,11 @@ or a fixed ratio of snapshot, integration, and unit tests.
   `Error: failed to write device status file: <reason>` rather than the shell
   redirection error Bash emits. The exit status is unchanged, and no consumer
   parses this message.
+- `cloud-local status` keeps reporting when a container-name lookup fails.
+  Bash runs `docker ps` in a command substitution under `set -e`, so a failing
+  lookup aborts the command before any line is printed. Rust omits the
+  unreadable container from the `db: Running (...)` annotation and still prints
+  every service row, which is what the Manager's line-by-line parsing expects.
 
 ## Completion during the hybrid period
 

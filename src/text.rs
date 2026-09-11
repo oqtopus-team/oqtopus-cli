@@ -6,6 +6,8 @@
 use std::io::{self, Write};
 
 use crate::backend::{BackendDeviceStatus, BackendInfo, BackendStatus};
+use crate::cloud_local::{CloudLocalInfo, CloudLocalStatus};
+use crate::service::ServiceStatus;
 use crate::version::VersionInfo;
 
 const TOP_LEVEL_HELP: &str = "\
@@ -41,11 +43,7 @@ pub(crate) fn write_backend_info(out: &mut impl Write, info: &BackendInfo) -> io
 
 pub(crate) fn write_backend_status(out: &mut impl Write, status: &BackendStatus) -> io::Result<()> {
     for service in &status.services {
-        if let Some(pid) = service.pid {
-            writeln!(out, "{}: Running (PID {pid})", service.name)?;
-        } else {
-            writeln!(out, "{}: Stopped", service.name)?;
-        }
+        write_process_status(out, service)?;
     }
     out.flush()
 }
@@ -67,6 +65,37 @@ pub(crate) fn write_backend_device_status(
         BackendDeviceStatus::Updated(action) => writeln!(out, "{action}")?,
     }
     out.flush()
+}
+
+pub(crate) fn write_cloud_local_info(
+    out: &mut impl Write,
+    info: &CloudLocalInfo,
+) -> io::Result<()> {
+    out.write_all(&info.metadata)?;
+    out.flush()
+}
+
+pub(crate) fn write_cloud_local_status(
+    out: &mut impl Write,
+    status: &CloudLocalStatus,
+) -> io::Result<()> {
+    if let Some(containers) = &status.database_containers {
+        writeln!(out, "db: Running ({})", containers.join(", "))?;
+    } else {
+        writeln!(out, "db: Stopped")?;
+    }
+    for service in &status.services {
+        write_process_status(out, service)?;
+    }
+    out.flush()
+}
+
+fn write_process_status(out: &mut impl Write, service: &ServiceStatus) -> io::Result<()> {
+    if let Some(pid) = service.pid {
+        writeln!(out, "{}: Running (PID {pid})", service.name)
+    } else {
+        writeln!(out, "{}: Stopped", service.name)
+    }
 }
 
 pub(crate) fn write_error(out: &mut impl Write, message: &str) -> io::Result<()> {

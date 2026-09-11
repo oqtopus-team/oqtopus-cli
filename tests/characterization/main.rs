@@ -1,4 +1,5 @@
 mod backend;
+mod cloud_local;
 mod harness;
 
 use harness::TestContext;

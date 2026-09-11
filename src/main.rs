@@ -6,6 +6,7 @@
 
 mod backend;
 mod cli;
+mod cloud_local;
 mod environment;
 mod legacy;
 mod metadata;
@@ -19,6 +20,7 @@ use std::process;
 
 use backend::{backend_device_status, backend_info, backend_status};
 use cli::{Route, route};
+use cloud_local::{cloud_local_info, cloud_local_status};
 use legacy::run_legacy;
 use version::version_info;
 
@@ -60,6 +62,16 @@ fn main() {
             text::write_backend_device_status(&mut io::stdout().lock(), &status)
                 .map(|()| status.exit_code())
                 .map_err(|error| format!("failed to write backend device status: {error}"))
+        }),
+        Route::CloudLocalInfo => cloud_local_info(command_args).and_then(|info| {
+            text::write_cloud_local_info(&mut io::stdout().lock(), &info)
+                .map(|()| EXIT_SUCCESS)
+                .map_err(|error| format!("failed to write cloud-local info: {error}"))
+        }),
+        Route::CloudLocalStatus => cloud_local_status(command_args).and_then(|status| {
+            text::write_cloud_local_status(&mut io::stdout().lock(), &status)
+                .map(|()| EXIT_SUCCESS)
+                .map_err(|error| format!("failed to write cloud-local status: {error}"))
         }),
         Route::Legacy => run_legacy(&args),
     };
