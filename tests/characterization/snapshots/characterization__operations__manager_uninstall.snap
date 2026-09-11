@@ -1,0 +1,10 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus manager uninstall <version|branch:<branch>>
+--- stderr ---
+--- end ---

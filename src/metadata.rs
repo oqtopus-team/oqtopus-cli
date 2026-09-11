@@ -125,3 +125,71 @@ pub(crate) fn migrate_metadata_keys(path: &Path) {
         let _ = replace_file(path, migrated.as_bytes());
     }
 }
+
+/// Sets one environment binding while preserving unknown metadata and line order.
+pub(crate) fn set_metadata_value(path: &Path, key: &str, value: &str) -> io::Result<()> {
+    let contents = fs::read(path)?;
+    replace_file(path, &metadata_set_bytes(&contents, key, value))
+}
+
+/// Removes one environment binding while preserving every other metadata line.
+pub(crate) fn unset_metadata_value(path: &Path, key: &str) -> io::Result<()> {
+    let contents = fs::read(path)?;
+    replace_file(path, &metadata_unset_bytes(&contents, key))
+}
+
+fn metadata_set_bytes(contents: &[u8], key: &str, value: &str) -> Vec<u8> {
+    let prefix = format!("{key}=");
+    let replacement = format!("{key}={value}");
+    let mut updated = Vec::new();
+    let mut found = false;
+    let lines: Vec<_> = contents.split(|byte| *byte == b'\n').collect();
+    let line_count = lines.len() - usize::from(contents.ends_with(b"\n"));
+    for line in &lines[..line_count] {
+        if line.starts_with(prefix.as_bytes()) {
+            updated.extend_from_slice(replacement.as_bytes());
+            found = true;
+        } else {
+            updated.extend_from_slice(line);
+        }
+        updated.push(b'\n');
+    }
+    if !found {
+        updated.extend_from_slice(replacement.as_bytes());
+        updated.push(b'\n');
+    }
+    updated
+}
+
+fn metadata_unset_bytes(contents: &[u8], key: &str) -> Vec<u8> {
+    let prefix = format!("{key}=");
+    let mut updated = Vec::new();
+    let lines: Vec<_> = contents.split(|byte| *byte == b'\n').collect();
+    let line_count = lines.len() - usize::from(contents.ends_with(b"\n"));
+    for line in &lines[..line_count] {
+        if !line.starts_with(prefix.as_bytes()) {
+            updated.extend_from_slice(line);
+            updated.push(b'\n');
+        }
+    }
+    updated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{metadata_set_bytes, metadata_unset_bytes};
+
+    #[test]
+    fn binding_updates_preserve_non_utf8_unknown_lines() {
+        let contents = b"template=backend\nunknown=\xff\nengine_version=old\n";
+        let updated = metadata_set_bytes(contents, "engine_version", "v1.2.3");
+        assert_eq!(
+            updated,
+            b"template=backend\nunknown=\xff\nengine_version=v1.2.3\n"
+        );
+        assert_eq!(
+            metadata_unset_bytes(&updated, "engine_version"),
+            b"template=backend\nunknown=\xff\n"
+        );
+    }
+}

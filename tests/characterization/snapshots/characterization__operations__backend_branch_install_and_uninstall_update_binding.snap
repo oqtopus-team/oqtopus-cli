@@ -1,0 +1,26 @@
+---
+source: tests/characterization/operations.rs
+expression: context.normalize(&observation)
+---
+--- install ---
+exit: 0
+--- stdout ---
+Downloading tranqu from branch 'main'
+uv sync --frozen --no-dev --project <TEST_ROOT>/work/tranqu
+Bound tranqu_version=branch:main
+--- stderr ---
+--- end ---
+--- uninstall ---
+exit: 0
+--- stdout ---
+Removed <TEST_ROOT>/work/tranqu
+--- stderr ---
+--- end ---
+--- metadata ---
+template=backend
+install_root=<TEST_ROOT>/xdg-data/oqtopus/backend/releases
+environment_name=characterization
+environment_root=<TEST_ROOT>/work
+created_at=2000-01-02T03:04:05Z
+--- branch tree ---
+<EMPTY>

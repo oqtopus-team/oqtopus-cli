@@ -1,0 +1,11 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus backend install <engine|tranqu|gateway> [version|branch:<branch>] [--skip-sse-build]
+  oqtopus backend install all [--skip-sse-build]
+--- stderr ---
+--- end ---

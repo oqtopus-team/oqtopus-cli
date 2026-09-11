@@ -1,0 +1,10 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus backend build sse-runtime
+--- stderr ---
+--- end ---

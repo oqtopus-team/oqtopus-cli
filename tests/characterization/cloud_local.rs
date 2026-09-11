@@ -1,7 +1,7 @@
 use std::fs;
 use std::process::Command;
 
-use crate::harness::{EnvironmentTemplate, TestContext};
+use crate::harness::{EnvironmentTemplate, REMOTE_REFS_FIXTURE, TestContext};
 
 const SERVICES: [&str; 6] = ["db", "worker", "user_signup", "admin", "provider", "user"];
 
@@ -18,6 +18,50 @@ esac
 
 const RUNNING_DB_ROW: &str =
     "db: Running (characterization-db-1, characterization-minio-1, characterization-mc-1)";
+
+#[test]
+fn cloud_local_versions_marks_the_current_installed_version() {
+    let context = TestContext::new();
+    context.create_environment(
+        EnvironmentTemplate::CloudLocal,
+        &[("cloud_local_frontend_version", "v1.2.3")],
+    );
+    let install_root = context.root().join("xdg-data/oqtopus/cloud-local/releases");
+    fs::create_dir(install_root.join("frontend-v1.2.3")).expect("create installed release");
+
+    let output = context.run_snapshot_subject_with_remote_refs(
+        ["cloud-local", "versions", "frontend"],
+        REMOTE_REFS_FIXTURE,
+        false,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        ["frontend:", "  v2.0.0", "  v1.10.0", "* v1.2.3 (installed)",]
+    );
+    insta::assert_snapshot!("cloud_local_versions", context.render_output(&output));
+}
+
+#[test]
+fn cloud_local_versions_rejects_missing_component() {
+    let context = TestContext::new();
+    insta::assert_snapshot!(
+        "cloud_local_versions_missing_component",
+        context.render_output(&context.run_snapshot_subject(["cloud-local", "versions"]))
+    );
+}
+
+#[test]
+fn cloud_local_versions_help_preserves_legacy_text() {
+    let context = TestContext::new();
+    let output = context.run_snapshot_subject(["cloud-local", "versions", "help"]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    insta::assert_snapshot!("cloud_local_versions_help", context.render_output(&output));
+}
 
 #[test]
 fn cloud_local_info_outputs_metadata() {

@@ -1,0 +1,9 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: engine is not installed in this backend environment.
+--- end ---

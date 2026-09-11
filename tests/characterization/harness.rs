@@ -8,6 +8,14 @@ use std::process::{Command, Output, Stdio};
 const CHARACTERIZATION_SOURCE: &str = "OQTOPUS_CHARACTERIZATION_SOURCE";
 const FORBID_LEGACY_FALLBACK: &str = "OQTOPUS_FORBID_LEGACY_FALLBACK";
 
+pub const REMOTE_REFS_FIXTURE: &[u8] =
+    b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/heads/main\n\
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/tags/v1.2.3\n\
+cccccccccccccccccccccccccccccccccccccccc refs/tags/v1.10.0\n\
+dddddddddddddddddddddddddddddddddddddddd refs/tags/v2.0.0\n\
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee refs/tags/v2.0.0^{}\n\
+ffffffffffffffffffffffffffffffffffffffff refs/tags/v2.0.0-rc.1\n";
+
 /// Isolated filesystem and process environment shared by characterization tests.
 ///
 /// Paths and locale-sensitive settings are controlled so snapshots describe CLI behavior rather
@@ -94,6 +102,215 @@ impl TestContext {
             Ok("bash") => self.run_bash(args),
             Ok(source) => panic!("unsupported {CHARACTERIZATION_SOURCE} value: {source}"),
             Err(error) => panic!("invalid {CHARACTERIZATION_SOURCE} value: {error}"),
+        }
+    }
+
+    /// Runs a command against a deterministic git smart-HTTP advertisement.
+    ///
+    /// Bash receives the fixture through a fake `curl`, while Rust receives the same bytes through
+    /// a test-only file hook. Normal characterization runs therefore never depend on GitHub.
+    pub fn run_snapshot_subject_with_remote_refs<I, S>(
+        &self,
+        args: I,
+        refs: &[u8],
+        fail_request: bool,
+    ) -> Output
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let args: Vec<_> = args
+            .into_iter()
+            .map(|arg| arg.as_ref().to_os_string())
+            .collect();
+
+        match env::var(CHARACTERIZATION_SOURCE).as_deref() {
+            Ok("bash") => {
+                let fixture = self.root.join("remote-refs.fixture");
+                fs::write(&fixture, refs).expect("write remote refs fixture");
+                self.write_executable(
+                    "curl",
+                    b"#!/usr/bin/env bash\nset -eu\n[[ ${OQTOPUS_TEST_REMOTE_FAILURE:-0} == 0 ]] || exit 22\nout=\nwhile [[ $# -gt 0 ]]; do\n  if [[ $1 == -o ]]; then out=$2; shift 2; else shift; fi\ndone\ncp \"$OQTOPUS_TEST_REMOTE_REFS\" \"$out\"\n",
+                );
+
+                let legacy_cli = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin/oqtopus");
+                let mut command = Command::new(bash_program());
+                command.arg(legacy_cli).args(&args);
+                self.configure(&mut command);
+                command.env("OQTOPUS_TEST_REMOTE_REFS", fixture).env(
+                    "OQTOPUS_TEST_REMOTE_FAILURE",
+                    if fail_request { "1" } else { "0" },
+                );
+                command.output().expect("legacy Bash CLI should run")
+            }
+            Err(env::VarError::NotPresent) => {
+                let fixture = if fail_request {
+                    self.root.join("missing-remote-refs.fixture")
+                } else {
+                    let fixture = self.root.join("remote-refs.fixture");
+                    fs::write(&fixture, refs).expect("write remote refs fixture");
+                    fixture
+                };
+                let mut command = self.rust_command(&args);
+                command.env("OQTOPUS_TEST_HTTP_RESPONSE_FILE", fixture);
+                command.output().expect("Rust CLI should run")
+            }
+            Ok(source) => panic!("unsupported {CHARACTERIZATION_SOURCE} value: {source}"),
+            Err(error) => panic!("invalid {CHARACTERIZATION_SOURCE} value: {error}"),
+        }
+    }
+
+    pub fn run_snapshot_subject_with_template_archive<I, S>(
+        &self,
+        args: I,
+        archive: Option<&[u8]>,
+        expected_url: &str,
+        created_at: &str,
+    ) -> Output
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let args: Vec<_> = args
+            .into_iter()
+            .map(|arg| arg.as_ref().to_os_string())
+            .collect();
+        let fixture = self.root.join("template.tar.gz");
+        if let Some(archive) = archive {
+            fs::write(&fixture, archive).expect("write template archive fixture");
+        }
+
+        match env::var(CHARACTERIZATION_SOURCE).as_deref() {
+            Ok("bash") => {
+                self.write_executable(
+                    "curl",
+                    b"#!/usr/bin/env bash\nset -eu\nout=\nurl=\nwhile [[ $# -gt 0 ]]; do\n  if [[ $1 == -o ]]; then out=$2; shift 2\n  elif [[ $1 == http://* || $1 == https://* ]]; then url=$1; shift\n  else shift\n  fi\ndone\n[[ $url == \"$OQTOPUS_TEST_EXPECTED_HTTP_URL\" ]] || exit 22\n[[ -f $OQTOPUS_TEST_HTTP_RESPONSE_FILE ]] || exit 22\ncp \"$OQTOPUS_TEST_HTTP_RESPONSE_FILE\" \"$out\"\n",
+                );
+                self.write_executable(
+                    "date",
+                    b"#!/usr/bin/env bash\nset -eu\nprintf '%s\\n' \"$OQTOPUS_TEST_CREATED_AT\"\n",
+                );
+                let legacy_cli = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin/oqtopus");
+                let mut command = Command::new(bash_program());
+                command.arg(legacy_cli).args(&args);
+                self.configure(&mut command);
+                command
+                    .env("OQTOPUS_TEST_HTTP_RESPONSE_FILE", &fixture)
+                    .env("OQTOPUS_TEST_EXPECTED_HTTP_URL", expected_url)
+                    .env("OQTOPUS_TEST_CREATED_AT", created_at);
+                command.output().expect("legacy Bash CLI should run")
+            }
+            Err(env::VarError::NotPresent) => {
+                let mut command = self.rust_command(&args);
+                command
+                    .env("OQTOPUS_TEST_HTTP_RESPONSE_FILE", &fixture)
+                    .env("OQTOPUS_TEST_EXPECTED_HTTP_URL", expected_url)
+                    .env("OQTOPUS_TEST_CREATED_AT", created_at);
+                command.output().expect("Rust CLI should run")
+            }
+            Ok(source) => panic!("unsupported {CHARACTERIZATION_SOURCE} value: {source}"),
+            Err(error) => panic!("invalid {CHARACTERIZATION_SOURCE} value: {error}"),
+        }
+    }
+
+    /// Runs a command with deterministic URL-to-response mappings.
+    ///
+    /// This supports operations such as `update` and branch installation that fetch refs first
+    /// and an archive second. Bash receives a fake `curl`; Rust reads the same manifest through
+    /// its test-only HTTP fixture hook.
+    pub fn run_snapshot_subject_with_http_fixtures<I, S>(
+        &self,
+        args: I,
+        fixtures: &[(&str, &[u8])],
+    ) -> Output
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let args: Vec<_> = args
+            .into_iter()
+            .map(|arg| arg.as_ref().to_os_string())
+            .collect();
+        let manifest = self.root.join("http-fixtures.tsv");
+        let mut mappings = String::new();
+        for (index, (url, contents)) in fixtures.iter().enumerate() {
+            let path = self.root.join(format!("http-fixture-{index}"));
+            fs::write(&path, contents).expect("write HTTP fixture");
+            mappings.push_str(url);
+            mappings.push('\t');
+            mappings.push_str(&path.to_string_lossy());
+            mappings.push('\n');
+        }
+        fs::write(&manifest, mappings).expect("write HTTP fixture manifest");
+
+        match env::var(CHARACTERIZATION_SOURCE).as_deref() {
+            Ok("bash") => {
+                self.write_executable(
+                    "curl",
+                    b"#!/usr/bin/env bash\nset -eu\nout=\nurl=\nwhile [[ $# -gt 0 ]]; do\n  if [[ $1 == -o ]]; then out=$2; shift 2\n  elif [[ $1 == http://* || $1 == https://* ]]; then url=$1; shift\n  else shift\n  fi\ndone\nwhile IFS=$'\\t' read -r expected fixture; do\n  if [[ $url == \"$expected\" ]]; then cp \"$fixture\" \"$out\"; exit 0; fi\ndone < \"$OQTOPUS_TEST_HTTP_FIXTURE_MANIFEST\"\nexit 22\n",
+                );
+                let legacy_cli = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin/oqtopus");
+                let mut command = Command::new(bash_program());
+                command.arg(legacy_cli).args(&args);
+                self.configure(&mut command);
+                command.env("OQTOPUS_TEST_HTTP_FIXTURE_MANIFEST", manifest);
+                command.output().expect("legacy Bash CLI should run")
+            }
+            Err(env::VarError::NotPresent) => {
+                let mut command = self.rust_command(&args);
+                command.env("OQTOPUS_TEST_HTTP_FIXTURE_MANIFEST", manifest);
+                command.output().expect("Rust CLI should run")
+            }
+            Ok(source) => panic!("unsupported {CHARACTERIZATION_SOURCE} value: {source}"),
+            Err(error) => panic!("invalid {CHARACTERIZATION_SOURCE} value: {error}"),
+        }
+    }
+
+    pub fn install_fake_uv(&self) {
+        self.write_executable(
+            "uv",
+            b"#!/usr/bin/env bash\nset -eu\nprintf 'uv %s\\n' \"$*\"\nproject=\nwhile [[ $# -gt 0 ]]; do\n  if [[ $1 == --project ]]; then project=$2; shift 2; else shift; fi\ndone\n[[ -z $project ]] || mkdir -p \"$project/.venv\"\n",
+        );
+    }
+
+    pub fn install_fake_docker(&self) {
+        self.write_executable(
+            "docker",
+            b"#!/usr/bin/env bash\nset -eu\nprintf 'docker %s\\n' \"$*\"\n",
+        );
+    }
+
+    pub fn render_tree(&self, relative_root: impl AsRef<Path>) -> String {
+        fn visit(root: &Path, directory: &Path, entries: &mut Vec<String>) {
+            let mut children: Vec<_> = fs::read_dir(directory)
+                .expect("read tree directory")
+                .map(|entry| entry.expect("read tree entry"))
+                .collect();
+            children.sort_by_key(fs::DirEntry::file_name);
+            for entry in children {
+                let path = entry.path();
+                let relative = path.strip_prefix(root).expect("tree entry below root");
+                let kind = entry.file_type().expect("read tree entry type");
+                if kind.is_dir() {
+                    entries.push(format!("{}/", relative.display()));
+                    visit(root, &path, entries);
+                } else if kind.is_file() {
+                    entries.push(relative.display().to_string());
+                } else if kind.is_symlink() {
+                    entries.push(format!("{} -> <SYMLINK>", relative.display()));
+                }
+            }
+        }
+
+        let root = self.work.join(relative_root);
+        let mut entries = Vec::new();
+        if root.is_dir() {
+            visit(&root, &root, &mut entries);
+        }
+        if entries.is_empty() {
+            "<EMPTY>\n".to_owned()
+        } else {
+            format!("{}\n", entries.join("\n"))
         }
     }
 

@@ -1,6 +1,74 @@
 use std::fs;
 
-use crate::harness::{EnvironmentTemplate, TestContext};
+use crate::harness::{EnvironmentTemplate, REMOTE_REFS_FIXTURE, TestContext};
+
+#[test]
+fn manager_versions_lists_remote_versions_without_an_environment() {
+    let context = TestContext::new();
+    let output = context.run_snapshot_subject_with_remote_refs(
+        ["manager", "versions"],
+        REMOTE_REFS_FIXTURE,
+        false,
+    );
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        ["manager:", "  v2.0.0", "  v1.10.0", "  v1.2.3"]
+    );
+    insta::assert_snapshot!("manager_versions", context.render_output(&output));
+}
+
+#[test]
+fn manager_versions_marks_the_current_installed_version() {
+    let context = TestContext::new();
+    context.create_environment(
+        EnvironmentTemplate::Manager,
+        &[("manager_version", "v1.10.0")],
+    );
+    let install_root = context.root().join("xdg-data/oqtopus/manager/releases");
+    fs::create_dir(install_root.join("manager-v1.10.0")).expect("create installed manager");
+    let output = context.run_snapshot_subject_with_remote_refs(
+        ["manager", "versions"],
+        REMOTE_REFS_FIXTURE,
+        false,
+    );
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        ["manager:", "  v2.0.0", "* v1.10.0 (installed)", "  v1.2.3",]
+    );
+    insta::assert_snapshot!(
+        "manager_versions_in_environment",
+        context.render_output(&output)
+    );
+}
+
+#[test]
+fn manager_versions_rejects_arguments() {
+    let context = TestContext::new();
+    insta::assert_snapshot!(
+        "manager_versions_extra_argument",
+        context
+            .render_output(&context.run_snapshot_subject(["manager", "versions", "unexpected",]))
+    );
+}
+
+#[test]
+fn manager_versions_help_preserves_legacy_text() {
+    let context = TestContext::new();
+    let output = context.run_snapshot_subject(["manager", "versions", "help"]);
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    insta::assert_snapshot!("manager_versions_help", context.render_output(&output));
+}
 
 #[test]
 fn manager_info_outputs_metadata() {

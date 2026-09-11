@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::harness::{EnvironmentTemplate, TestContext};
+use crate::harness::{EnvironmentTemplate, REMOTE_REFS_FIXTURE, TestContext};
 
 const BACKEND_SERVICES: [&str; 7] = [
     "core",
@@ -19,6 +19,96 @@ const BACKEND_SERVICES: [&str; 7] = [
     "tranqu",
     "gateway",
 ];
+
+#[test]
+fn backend_versions_merges_remote_current_and_installed_versions() {
+    let context = TestContext::new();
+    context.create_environment(
+        EnvironmentTemplate::Backend,
+        &[("engine_version", "branch:develop")],
+    );
+    let install_root = context.root().join("xdg-data/oqtopus/backend/releases");
+    fs::create_dir(install_root.join("engine-v1.10.0")).expect("create installed release");
+    fs::create_dir(install_root.join("engine-v0.9.0")).expect("create orphaned release");
+
+    let output = context.run_snapshot_subject_with_remote_refs(
+        ["backend", "versions", "engine"],
+        REMOTE_REFS_FIXTURE,
+        false,
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        stdout.lines().collect::<Vec<_>>(),
+        [
+            "engine:",
+            "* branch:develop (installed)",
+            "  v2.0.0",
+            "  v1.10.0 (installed)",
+            "  v1.2.3",
+            "  v0.9.0 (installed, not in remote tags)",
+        ]
+    );
+    insta::assert_snapshot!("backend_versions", context.render_output(&output));
+}
+
+#[test]
+fn backend_versions_preserves_usage_and_remote_errors() {
+    let context = TestContext::new();
+    insta::assert_snapshot!(
+        "backend_versions_extra_argument",
+        context.render_output(&context.run_snapshot_subject([
+            "backend",
+            "versions",
+            "engine",
+            "unexpected",
+        ]))
+    );
+    insta::assert_snapshot!(
+        "backend_versions_unknown_component",
+        context.render_output(&context.run_snapshot_subject(["backend", "versions", "unknown",]))
+    );
+    insta::assert_snapshot!(
+        "backend_versions_remote_failure",
+        context.render_output(&context.run_snapshot_subject_with_remote_refs(
+            ["backend", "versions", "engine"],
+            REMOTE_REFS_FIXTURE,
+            true,
+        ))
+    );
+    insta::assert_snapshot!(
+        "backend_versions_without_stable_tags",
+        context.render_output(&context.run_snapshot_subject_with_remote_refs(
+            ["backend", "versions", "engine"],
+            b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/tags/v2.0.0-rc.1\n",
+            false,
+        ))
+    );
+    insta::assert_snapshot!(
+        "backend_versions_without_any_tags",
+        context.render_output(&context.run_snapshot_subject_with_remote_refs(
+            ["backend", "versions", "engine"],
+            b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/heads/main\n",
+            false,
+        ))
+    );
+}
+
+#[test]
+fn backend_versions_help_preserves_legacy_text() {
+    let context = TestContext::new();
+    let canonical = context.run_snapshot_subject(["backend", "versions", "help"]);
+    assert!(canonical.status.success());
+    assert!(canonical.stderr.is_empty());
+    insta::assert_snapshot!("backend_versions_help", context.render_output(&canonical));
+
+    let alias = context.run_snapshot_subject(["backend", "versions", "--help", "ignored"]);
+    assert_eq!(alias.stdout, canonical.stdout);
+    assert_eq!(alias.stderr, canonical.stderr);
+    assert_eq!(alias.status.code(), canonical.status.code());
+}
 
 // Covers the three pid-file states in one ordered artifact: a live PID is Running, while a PID
 // whose process exited and a nonnumeric PID are both Stopped. The row order and spelling are part

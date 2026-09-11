@@ -1,0 +1,19 @@
+---
+source: tests/characterization/init.rs
+expression: context.render_output(&context.run_snapshot_subject(args))
+---
+exit: 1
+--- stdout ---
+Usage:
+  oqtopus init <env_name> --template backend [--branch <branch>]
+  oqtopus init <env_name> --template cloud-local [--branch <branch>]
+  oqtopus init <env_name> --template manager [--branch <branch>]
+
+Creates a local OQTOPUS environment from the official template.
+
+Options:
+  --branch <branch>  Fetch the template from this branch of oqtopus-cli
+                      instead of 'main'. Mainly useful for testing
+                      in-development templates.
+--- stderr ---
+--- end ---

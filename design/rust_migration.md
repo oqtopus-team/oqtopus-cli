@@ -241,6 +241,55 @@ or a fixed ratio of snapshot, integration, and unit tests.
   lookup aborts the command before any line is printed. Rust omits the
   unreadable container from the `db: Running (...)` annotation and still prints
   every service row, which is what the Manager's line-by-line parsing expects.
+- Native `versions` commands do not reproduce diagnostics emitted directly by
+  a failing `curl` process. They preserve the CLI-owned error message and exit
+  status; no downstream consumer parses the removed tool-specific diagnostic.
+- Native `init` preserves the target environment directory when download or
+  extraction fails, but cleans its private temporary extraction directory.
+  Bash leaked that temporary directory by exiting before its cleanup command.
+  Rust also reports CLI-owned extraction and copy errors without reproducing
+  diagnostics emitted directly by `tar`, `find`, or `cp`.
+- Native install and update commands use the shared Rust HTTP and archive
+  implementations established by `versions` and `init`. They do not reproduce
+  diagnostics or PATH requirements from `curl`, `jq`, or `tar`; CLI-owned
+  errors and exit status remain unchanged. The `uv` and Docker processes remain
+  external product behavior, including their argument order and inherited
+  standard streams.
+- Native `backend build sse-runtime` reads the real user and group IDs through
+  the platform API instead of invoking `id`. This removes one shell-tool PATH
+  dependency while preserving the Docker build arguments.
+- Release uninstall continues to remove only the shared release directory and
+  leaves the environment binding in metadata. Branch uninstall removes the
+  environment-local checkout and its binding. Install and update write a
+  binding only after download, extraction, synchronization, and any requested
+  image build succeed; a multi-component install keeps work completed before a
+  later component fails.
+
+## Remote-data test policy
+
+Commands that read remote refs use fixed git smart-HTTP advertisement fixtures
+in the normal test suite. Characterization tests feed the same bytes to Bash
+and Rust without network access, and failure cases use a deterministic failed
+fetch. Live GitHub access is a manual integration check rather than a CI
+requirement. This keeps snapshots stable while still allowing the production
+transport to be checked before a remote-data slice is delivered.
+
+`init` tests likewise use fixed archive bytes and a fixed UTC creation time.
+They verify the requested branch through the exact download URL, then compare
+the generated directory tree, metadata, and selected rendered files with Bash.
+
+Install and update tests map each expected URL to a fixed response, allowing a
+single invocation to resolve refs and then download an archive without network
+access. Fake `uv` and Docker executables preserve and expose child-process
+arguments and output order while creating only the completion markers the CLI
+inspects.
+
+GitHub archive extraction validates every entry before writing. Absolute or
+escaping symbolic-link targets, hard links, special entries, duplicate paths,
+and entries nested beneath an archive-provided symbolic link are rejected.
+Extraction also refuses to traverse a symbolic link already present below the
+target directory. A regression test verifies that a link followed by a nested
+file cannot overwrite a file outside the target.
 
 ## Completion during the hybrid period
 
@@ -319,9 +368,6 @@ never lacks an installable CLI.
 
 ## Open migration decisions
 
-- How commands that use remote data, starting with `versions`, are tested.
-  The approach to fixed responses, failure cases, and live-network verification
-  remains undecided.
 - When completion moves from Bash to a Rust-owned command model.
 - How the native executable is packaged, installed, and rolled back after
   fallback retirement and before the merge into `main`. Packaging must keep an `oqtopus` executable on `PATH`,

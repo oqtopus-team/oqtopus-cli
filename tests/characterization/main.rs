@@ -1,7 +1,9 @@
 mod backend;
 mod cloud_local;
 mod harness;
+mod init;
 mod manager;
+mod operations;
 
 use harness::TestContext;
 

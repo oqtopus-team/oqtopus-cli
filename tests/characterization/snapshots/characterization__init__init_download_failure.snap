@@ -1,0 +1,11 @@
+---
+source: tests/characterization/init.rs
+expression: "format!(\"{}--- target tree ---\\n{}\", context.render_output(&output),\ncontext.render_tree(\"demo\"))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: failed to download backend template archive (branch 'main' may not exist).
+--- end ---
+--- target tree ---
+<EMPTY>
