@@ -6,8 +6,10 @@
 
 mod backend;
 mod cli;
+mod environment;
 mod legacy;
 mod metadata;
+mod service;
 mod text;
 mod version;
 
