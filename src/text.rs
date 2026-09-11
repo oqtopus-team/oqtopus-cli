@@ -7,6 +7,7 @@ use std::io::{self, Write};
 
 use crate::backend::{BackendDeviceStatus, BackendInfo, BackendStatus};
 use crate::cloud_local::{CloudLocalInfo, CloudLocalStatus};
+use crate::manager::{ManagerInfo, ManagerStatus};
 use crate::service::ServiceStatus;
 use crate::version::VersionInfo;
 
@@ -87,6 +88,16 @@ pub(crate) fn write_cloud_local_status(
     for service in &status.services {
         write_process_status(out, service)?;
     }
+    out.flush()
+}
+
+pub(crate) fn write_manager_info(out: &mut impl Write, info: &ManagerInfo) -> io::Result<()> {
+    out.write_all(&info.metadata)?;
+    out.flush()
+}
+
+pub(crate) fn write_manager_status(out: &mut impl Write, status: &ManagerStatus) -> io::Result<()> {
+    write_process_status(out, &status.service)?;
     out.flush()
 }
 

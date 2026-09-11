@@ -12,6 +12,8 @@ pub(crate) enum Route {
     BackendDeviceStatus,
     CloudLocalInfo,
     CloudLocalStatus,
+    ManagerInfo,
+    ManagerStatus,
     Legacy,
 }
 
@@ -29,6 +31,8 @@ pub(crate) fn route(args: &[String]) -> Route {
         (Some("backend"), Some("device-status")) => Route::BackendDeviceStatus,
         (Some("cloud-local"), Some("info")) => Route::CloudLocalInfo,
         (Some("cloud-local"), Some("status")) => Route::CloudLocalStatus,
+        (Some("manager"), Some("info")) => Route::ManagerInfo,
+        (Some("manager"), Some("status")) => Route::ManagerStatus,
         _ => Route::Legacy,
     }
 }

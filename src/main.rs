@@ -9,6 +9,7 @@ mod cli;
 mod cloud_local;
 mod environment;
 mod legacy;
+mod manager;
 mod metadata;
 mod service;
 mod text;
@@ -22,6 +23,7 @@ use backend::{backend_device_status, backend_info, backend_status};
 use cli::{Route, route};
 use cloud_local::{cloud_local_info, cloud_local_status};
 use legacy::run_legacy;
+use manager::{manager_info, manager_status};
 use version::version_info;
 
 const EXIT_SUCCESS: i32 = 0;
@@ -36,8 +38,8 @@ fn main() {
     }
 
     let args: Vec<String> = env::args().skip(1).collect();
-    // Routing consumes at most the two leading words, so the remainder is the selected
-    // command's own argument list. Help, version, and legacy routes ignore it.
+    // Routing consumes at most the two leading words, so the remainder is the selected command's
+    // own argument list. Help, version, and legacy routes ignore it.
     let command_args = args.get(2..).unwrap_or_default();
 
     // Commands report their own exit status; a returned message is always a failure.
@@ -72,6 +74,16 @@ fn main() {
             text::write_cloud_local_status(&mut io::stdout().lock(), &status)
                 .map(|()| EXIT_SUCCESS)
                 .map_err(|error| format!("failed to write cloud-local status: {error}"))
+        }),
+        Route::ManagerInfo => manager_info(command_args).and_then(|info| {
+            text::write_manager_info(&mut io::stdout().lock(), &info)
+                .map(|()| EXIT_SUCCESS)
+                .map_err(|error| format!("failed to write manager info: {error}"))
+        }),
+        Route::ManagerStatus => manager_status(command_args).and_then(|status| {
+            text::write_manager_status(&mut io::stdout().lock(), &status)
+                .map(|()| EXIT_SUCCESS)
+                .map_err(|error| format!("failed to write manager status: {error}"))
         }),
         Route::Legacy => run_legacy(&args),
     };
