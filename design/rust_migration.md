@@ -258,6 +258,15 @@ or a fixed ratio of snapshot, integration, and unit tests.
 - Native `backend build sse-runtime` reads the real user and group IDs through
   the platform API instead of invoking `id`. This removes one shell-tool PATH
   dependency while preserving the Docker build arguments.
+- Native service lifecycle commands execute `uv` and Docker directly instead
+  of constructing shell-escaped command strings for `eval`. Background
+  services inherit the legacy SIGHUP-ignore behavior, while PID files,
+  per-service start locks, command arguments, environment loading, startup
+  ordering, and text output remain compatible.
+- Native service PID handling rejects PID 0. Bash accepted it, even though
+  signaling PID 0 targets the CLI's entire process group rather than one
+  managed service; treating a corrupt PID file as stopped avoids that unsafe
+  side effect.
 - Release uninstall continues to remove only the shared release directory and
   leaves the environment binding in metadata. Branch uninstall removes the
   environment-local checkout and its binding. Install and update write a

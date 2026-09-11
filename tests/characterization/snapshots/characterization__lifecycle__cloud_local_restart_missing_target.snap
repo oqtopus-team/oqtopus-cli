@@ -1,0 +1,10 @@
+---
+source: tests/characterization/lifecycle.rs
+expression: context.render_output(&output)
+---
+exit: 1
+--- stdout ---
+Usage:
+  oqtopus cloud-local restart <db|user|provider|admin|user_signup|worker|all>
+--- stderr ---
+--- end ---

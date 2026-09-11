@@ -11,6 +11,7 @@ mod cloud_local;
 mod environment;
 mod init;
 mod legacy;
+mod lifecycle;
 mod manager;
 mod metadata;
 mod operations;
@@ -30,6 +31,10 @@ use cli::{Route, route};
 use cloud_local::{cloud_local_info, cloud_local_status};
 use init::init;
 use legacy::run_legacy;
+use lifecycle::{
+    backend_restart, backend_start, backend_stop, cloud_local_restart, cloud_local_start,
+    cloud_local_stop, manager_restart, manager_start, manager_stop,
+};
 use manager::{manager_info, manager_status};
 use operations::{
     backend_build, backend_install, backend_uninstall, backend_update, cloud_local_install,
@@ -124,6 +129,11 @@ fn main() {
                     .map_err(|error| format!("failed to write backend update result: {error}"))
             })
         }
+        Route::BackendStart => lifecycle_stdout(|out, _err| backend_start(command_args, out)),
+        Route::BackendStop => lifecycle_stdout(|out, err| backend_stop(command_args, out, err)),
+        Route::BackendRestart => {
+            lifecycle_stdout(|out, err| backend_restart(command_args, out, err))
+        }
         Route::CloudLocalInfo => cloud_local_info(command_args).and_then(|info| {
             text::write_cloud_local_info(&mut io::stdout().lock(), &info)
                 .map(|()| EXIT_SUCCESS)
@@ -165,6 +175,15 @@ fn main() {
                     .map_err(|error| format!("failed to write cloud-local update result: {error}"))
             })
         }
+        Route::CloudLocalStart => {
+            lifecycle_stdout(|out, err| cloud_local_start(command_args, out, err))
+        }
+        Route::CloudLocalStop => {
+            lifecycle_stdout(|out, err| cloud_local_stop(command_args, out, err))
+        }
+        Route::CloudLocalRestart => {
+            lifecycle_stdout(|out, err| cloud_local_restart(command_args, out, err))
+        }
         Route::ManagerInfo => manager_info(command_args).and_then(|info| {
             text::write_manager_info(&mut io::stdout().lock(), &info)
                 .map(|()| EXIT_SUCCESS)
@@ -204,6 +223,9 @@ fn main() {
                     .map_err(|error| format!("failed to write manager update result: {error}"))
             })
         }
+        Route::ManagerStart => lifecycle_stdout(|out, _err| manager_start(command_args, out)),
+        Route::ManagerStop => lifecycle_stdout(|out, _err| manager_stop(command_args, out)),
+        Route::ManagerRestart => lifecycle_stdout(|out, _err| manager_restart(command_args, out)),
         Route::Legacy => run_legacy(&args),
     };
 
@@ -215,4 +237,19 @@ fn main() {
             process::exit(EXIT_FAILURE);
         }
     }
+}
+
+fn lifecycle_stdout(
+    command: impl FnOnce(
+        &mut io::StdoutLock<'_>,
+        &mut io::StderrLock<'_>,
+    ) -> Result<lifecycle::LifecycleResult, String>,
+) -> Result<i32, String> {
+    let mut stdout = io::stdout().lock();
+    let mut stderr = io::stderr().lock();
+    command(&mut stdout, &mut stderr).and_then(|result| {
+        text::write_lifecycle(&mut stdout, &result)
+            .map(|()| result.exit_code())
+            .map_err(|error| format!("failed to write lifecycle result: {error}"))
+    })
 }

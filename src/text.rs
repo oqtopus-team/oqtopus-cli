@@ -8,6 +8,7 @@ use std::io::{self, Write};
 use crate::backend::{BackendDeviceStatus, BackendInfo, BackendStatus};
 use crate::cloud_local::{CloudLocalInfo, CloudLocalStatus};
 use crate::init::{InitOutput, InitResult};
+use crate::lifecycle::{LifecycleKind, LifecycleOutput, LifecycleResult};
 use crate::manager::{ManagerInfo, ManagerStatus};
 use crate::operations::{OperationKind, OperationOutput, OperationResult};
 use crate::service::ServiceStatus;
@@ -176,6 +177,41 @@ pub(crate) fn write_operation(out: &mut impl Write, result: &OperationResult) ->
         out.write_all(operation_usage(kind).as_bytes())?;
     }
     out.flush()
+}
+
+pub(crate) fn write_lifecycle(out: &mut impl Write, result: &LifecycleResult) -> io::Result<()> {
+    if let LifecycleOutput::Usage(kind) = result.output {
+        out.write_all(lifecycle_usage(kind).as_bytes())?;
+    }
+    out.flush()
+}
+
+fn lifecycle_usage(kind: LifecycleKind) -> &'static str {
+    match kind {
+        LifecycleKind::BackendStart => {
+            "Usage:\n  oqtopus backend start <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway|all>\n  oqtopus backend start <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway> --foreground\n"
+        }
+        LifecycleKind::BackendStop => {
+            "Usage:\n  oqtopus backend stop <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway|all>\n"
+        }
+        LifecycleKind::BackendRestart => {
+            "Usage:\n  oqtopus backend restart <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway|all>\n"
+        }
+        LifecycleKind::CloudLocalStart => {
+            "Usage:\n  oqtopus cloud-local start <db|user|provider|admin|user_signup|worker|all>\n  oqtopus cloud-local start <db|user|provider|admin|user_signup|worker> --foreground\n"
+        }
+        LifecycleKind::CloudLocalStop => {
+            "Usage:\n  oqtopus cloud-local stop <db|user|provider|admin|user_signup|worker|all>\n"
+        }
+        LifecycleKind::CloudLocalRestart => {
+            "Usage:\n  oqtopus cloud-local restart <db|user|provider|admin|user_signup|worker|all>\n"
+        }
+        LifecycleKind::ManagerStart => {
+            "Usage:\n  oqtopus manager start\n  oqtopus manager start --foreground\n"
+        }
+        LifecycleKind::ManagerStop => "Usage:\n  oqtopus manager stop\n",
+        LifecycleKind::ManagerRestart => "Usage:\n  oqtopus manager restart\n",
+    }
 }
 
 fn operation_usage(kind: OperationKind) -> &'static str {

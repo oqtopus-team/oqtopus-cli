@@ -2,6 +2,7 @@ mod backend;
 mod cloud_local;
 mod harness;
 mod init;
+mod lifecycle;
 mod manager;
 mod operations;
 
