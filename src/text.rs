@@ -148,6 +148,10 @@ pub(crate) fn write_versions(out: &mut impl Write, result: &VersionsResult) -> i
             writeln!(out, "{}:", list.component)?;
             for entry in &list.entries {
                 let prefix = if entry.current { "* " } else { "  " };
+                // A tag reaches this list because it is advertised remotely, installed locally, or
+                // bound in metadata, so the annotation names whichever of those is worth pointing
+                // out. "not in remote tags" warns that a local version has no counterpart upstream;
+                // it is suppressed for branch checkouts, which are never expected to be tags.
                 let annotation = match (entry.installed, entry.remote) {
                     (true, false) if !entry.tag.starts_with("branch:") => {
                         " (installed, not in remote tags)"
@@ -163,6 +167,10 @@ pub(crate) fn write_versions(out: &mut impl Write, result: &VersionsResult) -> i
     out.flush()
 }
 
+/// Writes an operation's final output, which exists only when the operation refused to run.
+///
+/// A successful install, build, uninstall, or update has already streamed its progress through the
+/// reporter, so there is nothing left to render here beyond flushing.
 pub(crate) fn write_operation(out: &mut impl Write, result: &OperationResult) -> io::Result<()> {
     if let OperationOutput::Usage(kind) = result.output {
         out.write_all(operation_usage(kind).as_bytes())?;

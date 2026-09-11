@@ -138,13 +138,20 @@ pub(crate) fn unset_metadata_value(path: &Path, key: &str) -> io::Result<()> {
     replace_file(path, &metadata_unset_bytes(&contents, key))
 }
 
+// The functions above rewrite metadata as text, which is what the key migration needs: it reads a
+// value before writing it back, and a file it cannot decode is left alone. Binding updates run on
+// metadata the CLI must not damage, so they work on bytes instead and copy every line they do not
+// touch through unchanged, including lines that are not valid UTF-8.
+
 fn metadata_set_bytes(contents: &[u8], key: &str, value: &str) -> Vec<u8> {
     let prefix = format!("{key}=");
     let replacement = format!("{key}={value}");
     let mut updated = Vec::new();
     let mut found = false;
+    // Splitting on '\n' yields a trailing empty element for a file that ends in a newline; drop it
+    // so a terminated final line is not mistaken for an extra blank one.
     let lines: Vec<_> = contents.split(|byte| *byte == b'\n').collect();
-    let line_count = lines.len() - usize::from(contents.ends_with(b"\n"));
+    let line_count = lines.len() - usize::from(contents.is_empty() || contents.ends_with(b"\n"));
     for line in &lines[..line_count] {
         if line.starts_with(prefix.as_bytes()) {
             updated.extend_from_slice(replacement.as_bytes());
@@ -190,6 +197,14 @@ mod tests {
         assert_eq!(
             metadata_unset_bytes(&updated, "engine_version"),
             b"template=backend\nunknown=\xff\n"
+        );
+    }
+
+    #[test]
+    fn setting_a_binding_in_empty_metadata_does_not_add_a_blank_line() {
+        assert_eq!(
+            metadata_set_bytes(b"", "engine_version", "v1.2.3"),
+            b"engine_version=v1.2.3\n"
         );
     }
 }

@@ -50,6 +50,10 @@ pub(crate) fn cloud_local_status(args: &[String]) -> Result<CloudLocalStatus, St
     })
 }
 
+/// Locates the installed cloud component named by the environment's binding.
+///
+/// A `branch:` binding marks a checkout kept inside the environment; every other binding names a
+/// release in the shared install root. Install, uninstall, and build apply the same rule.
 fn cloud_directory(environment: &Environment) -> Option<PathBuf> {
     let text = String::from_utf8_lossy(&environment.metadata);
     let version = metadata_get(&text, "cloud_local_cloud_version")?;
@@ -83,6 +87,8 @@ fn database_is_running(project: &str, compose: &Path) -> bool {
         .stderr(Stdio::null())
         .output()
         .is_ok_and(|output| {
+            // `--quiet` prints one container ID per running match and nothing at all otherwise, so
+            // any byte other than a line terminator means the database is up.
             output.status.success() && output.stdout.iter().any(|byte| *byte != b'\n')
         })
 }

@@ -167,6 +167,8 @@ fn list_versions(
         .into_iter()
         .map(|tag| VersionEntry {
             current: current.as_deref() == Some(tag.as_str()),
+            // A branch checkout lives in the environment rather than the shared install root, so
+            // `installed_versions` never finds it. Reaching this list at all means it is bound.
             installed: tag.starts_with("branch:") || installed.contains(&tag),
             remote: remote_tags.contains(&tag),
             tag,
@@ -190,7 +192,7 @@ fn installed_versions(install_root: &Path, component: &str) -> Vec<String> {
         .filter(|entry| entry.path().is_dir())
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter_map(|name| name.strip_prefix(&prefix).map(str::to_owned))
-        .filter(|version| version.starts_with('v') && !version.is_empty())
+        .filter(|version| version.starts_with('v'))
         .collect()
 }
 
@@ -200,6 +202,11 @@ fn push_unique(tags: &mut Vec<String>, tag: &str) {
     }
 }
 
+/// Orders tags from oldest to newest, so callers displaying newest first reverse this.
+///
+/// Branch checkouts sort above every release, releases sort by version, and anything that is not a
+/// recognizable release sorts below them. Ties within a group fall back to byte order, which keeps
+/// the listing stable for tags this ordering cannot otherwise distinguish.
 fn compare_tags(left: &str, right: &str) -> Ordering {
     let left_branch = left.starts_with("branch:");
     let right_branch = right.starts_with("branch:");
@@ -242,6 +249,11 @@ fn compare_version_parts(left: [&str; 3], right: [&str; 3]) -> Ordering {
         .unwrap_or(Ordering::Equal)
 }
 
+/// Compares two digit strings numerically without parsing them into an integer.
+///
+/// Once leading zeros are gone, the longer number is the larger one and equal lengths compare
+/// correctly byte by byte. A tag with more digits than any integer type holds therefore orders
+/// correctly instead of overflowing.
 fn compare_decimal(left: &str, right: &str) -> Ordering {
     let left = left.trim_start_matches('0');
     let right = right.trim_start_matches('0');

@@ -80,6 +80,10 @@ fn inspect_archive(bytes: &[u8]) -> Result<(), ()> {
     Ok(())
 }
 
+/// Removes the single top-level directory that GitHub wraps every source archive in.
+///
+/// The remaining path must be relative and free of `..`, so a malicious entry cannot name a
+/// destination outside the extraction directory.
 fn stripped_path(path: &Path) -> Result<PathBuf, ()> {
     let relative = path.components().skip(1).collect::<PathBuf>();
     if relative
@@ -91,6 +95,12 @@ fn stripped_path(path: &Path) -> Result<PathBuf, ()> {
     Ok(relative)
 }
 
+/// Rejects a symbolic link whose target would resolve outside the extraction directory.
+///
+/// The target is resolved lexically against the link's own directory. `resolved` is only ever
+/// inspected through its depth: as long as every `..` has a component to pop, the target stays at
+/// or below the extraction root, so a failing pop is exactly the escape this rejects. An absolute
+/// target escapes regardless of depth and is rejected outright.
 fn validate_symlink_target(path: &Path, link: &Path) -> Result<(), ()> {
     let mut resolved: Vec<_> = path
         .parent()

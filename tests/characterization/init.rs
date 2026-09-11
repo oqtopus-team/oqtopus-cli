@@ -3,6 +3,7 @@ use std::io::Write;
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
+use tar::{EntryType, Header};
 
 use crate::harness::TestContext;
 
@@ -233,6 +234,25 @@ fn init_reports_download_and_missing_template_failures() {
     );
 }
 
+#[test]
+fn init_rejects_a_template_archive_with_an_escaping_symlink() {
+    let context = TestContext::new();
+    let archive = template_archive_with_escaping_symlink();
+    let output = context.run_snapshot_subject_with_template_archive(
+        ["init", "demo", "--template", "backend"],
+        Some(&archive),
+        MAIN_ARCHIVE_URL,
+        CREATED_AT,
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        output.stderr,
+        b"Error: failed to extract backend template archive.\n"
+    );
+    assert!(fs::symlink_metadata(context.work_dir().join("demo/escape")).is_err());
+}
+
 fn template_archive(context: &TestContext, include_backend: bool) -> Vec<u8> {
     let source = context.root().join("archive-source/oqtopus-cli-fixture");
     let templates = source.join("templates");
@@ -259,6 +279,27 @@ fn template_archive(context: &TestContext, include_backend: bool) -> Vec<u8> {
     archive
         .append_dir_all("oqtopus-cli-fixture", &source)
         .expect("build template archive");
+    let encoder = archive.into_inner().expect("finish tar archive");
+    encoder.finish().expect("finish gzip archive")
+}
+
+fn template_archive_with_escaping_symlink() -> Vec<u8> {
+    let encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut archive = tar::Builder::new(encoder);
+    let mut link = Header::new_gnu();
+    link.set_entry_type(EntryType::Symlink);
+    link.set_size(0);
+    link.set_mode(0o777);
+    link.set_link_name("/tmp/oqtopus-init-escape")
+        .expect("set escaping link target");
+    link.set_cksum();
+    archive
+        .append_data(
+            &mut link,
+            "oqtopus-cli-fixture/templates/backend/escape",
+            &[][..],
+        )
+        .expect("append escaping symlink");
     let encoder = archive.into_inner().expect("finish tar archive");
     encoder.finish().expect("finish gzip archive")
 }

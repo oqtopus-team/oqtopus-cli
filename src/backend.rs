@@ -61,12 +61,12 @@ pub(crate) fn backend_status(args: &[String]) -> Result<BackendStatus, String> {
         return Err("oqtopus backend status does not accept arguments.".to_owned());
     }
 
-    validate_environment("backend")?;
+    let environment = validate_environment("backend")?;
     let services = SERVICES
         .into_iter()
         .map(|name| ServiceStatus {
             name,
-            pid: running_pid(Path::new("pids").join(format!("{name}.pid")).as_path()),
+            pid: running_pid(&environment.root.join("pids").join(format!("{name}.pid"))),
         })
         .collect();
 

@@ -55,6 +55,11 @@ fn main() {
     let init_args = args.get(1..).unwrap_or_default();
 
     // Commands report their own exit status; a returned message is always a failure.
+    //
+    // Most commands compute a result and then render it, so they take the stdout lock only for the
+    // rendering step. The install, build, uninstall, and update routes instead stream progress
+    // while they work, so they hold one lock across both the command and its final output; that
+    // keeps progress and result in a single ordered stream.
     let outcome: Result<i32, String> = match route(&args) {
         Route::Help => text::write_help(&mut io::stdout().lock())
             .map(|()| EXIT_SUCCESS)

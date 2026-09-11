@@ -2,12 +2,10 @@
 
 use std::env;
 use std::fs;
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use flate2::read::GzDecoder;
-
+use crate::archive::extract_github_archive;
 use crate::remote::fetch_url;
 
 const DEFAULT_TEMPLATE_BRANCH: &str = "main";
@@ -173,8 +171,7 @@ fn download_template(
     })?;
     let temporary = tempfile::tempdir()
         .map_err(|error| format!("failed to create temporary directory: {error}"))?;
-    tar::Archive::new(GzDecoder::new(Cursor::new(archive)))
-        .unpack(temporary.path())
+    extract_github_archive(&archive, temporary.path())
         .map_err(|_| format!("failed to extract {} template archive.", template.name()))?;
     let source = find_template_directory(temporary.path(), template.name()).ok_or_else(|| {
         format!(
@@ -186,6 +183,11 @@ fn download_template(
         .map_err(|error| format!("failed to copy {} template: {error}", template.name()))
 }
 
+/// Searches the extracted archive for the `templates/<name>` directory.
+///
+/// The path is searched for rather than constructed because GitHub names an archive's top-level
+/// directory after the branch, and a branch name may itself contain a slash. Entries are visited
+/// in sorted order so a malformed archive containing several matches resolves the same way twice.
 fn find_template_directory(root: &Path, template_name: &str) -> Option<PathBuf> {
     let suffix = Path::new("templates").join(template_name);
     let mut pending = vec![root.to_owned()];
@@ -293,6 +295,11 @@ fn install_root(template: EnvironmentTemplate) -> Result<PathBuf, String> {
     Ok(base.join("oqtopus").join(template.name()).join("releases"))
 }
 
+/// Returns the creation timestamp stamped into a new environment's metadata.
+///
+/// Snapshots would otherwise differ on every run, so tests pin the value. As with the HTTP
+/// fixtures, the override is readable only under the fallback-forbidden test mode and cannot
+/// affect a normal invocation.
 fn created_at() -> Result<String, String> {
     if env::var_os(FORBID_LEGACY_FALLBACK).is_some()
         && let Ok(value) = env::var("OQTOPUS_TEST_CREATED_AT")

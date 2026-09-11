@@ -5,6 +5,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
+/// Selects which implementation the snapshots are taken from. Unset means the Rust executable,
+/// which is how tests normally run; `make record-characterization` sets it to `bash` to capture
+/// the legacy contract before a command is ported.
 const CHARACTERIZATION_SOURCE: &str = "OQTOPUS_CHARACTERIZATION_SOURCE";
 const FORBID_LEGACY_FALLBACK: &str = "OQTOPUS_FORBID_LEGACY_FALLBACK";
 
@@ -128,6 +131,9 @@ impl TestContext {
             Ok("bash") => {
                 let fixture = self.root.join("remote-refs.fixture");
                 fs::write(&fixture, refs).expect("write remote refs fixture");
+                // This and the other fake `curl` scripts exit 22 to report a failed request. That
+                // is curl's own "HTTP error returned" status; only the failure matters to the CLI,
+                // but a code real curl can produce keeps the fixture honest about what it imitates.
                 self.write_executable(
                     "curl",
                     b"#!/usr/bin/env bash\nset -eu\n[[ ${OQTOPUS_TEST_REMOTE_FAILURE:-0} == 0 ]] || exit 22\nout=\nwhile [[ $# -gt 0 ]]; do\n  if [[ $1 == -o ]]; then out=$2; shift 2; else shift; fi\ndone\ncp \"$OQTOPUS_TEST_REMOTE_REFS\" \"$out\"\n",
@@ -186,6 +192,9 @@ impl TestContext {
                     "curl",
                     b"#!/usr/bin/env bash\nset -eu\nout=\nurl=\nwhile [[ $# -gt 0 ]]; do\n  if [[ $1 == -o ]]; then out=$2; shift 2\n  elif [[ $1 == http://* || $1 == https://* ]]; then url=$1; shift\n  else shift\n  fi\ndone\n[[ $url == \"$OQTOPUS_TEST_EXPECTED_HTTP_URL\" ]] || exit 22\n[[ -f $OQTOPUS_TEST_HTTP_RESPONSE_FILE ]] || exit 22\ncp \"$OQTOPUS_TEST_HTTP_RESPONSE_FILE\" \"$out\"\n",
                 );
+                // `init` stamps a creation time into the metadata it writes, which would otherwise
+                // differ on every run. Bash shells out to `date`, so the Bash subject needs this
+                // stub; the Rust subject reads the same variable directly and needs no fake.
                 self.write_executable(
                     "date",
                     b"#!/usr/bin/env bash\nset -eu\nprintf '%s\\n' \"$OQTOPUS_TEST_CREATED_AT\"\n",
@@ -266,6 +275,10 @@ impl TestContext {
         }
     }
 
+    /// Installs a `uv` that echoes its arguments and creates the `.venv` the CLI looks for.
+    ///
+    /// Creating the directory is not cosmetic: the CLI treats it as the marker of a finished
+    /// installation, so without it a second install would report the tree as incomplete.
     pub fn install_fake_uv(&self) {
         self.write_executable(
             "uv",
@@ -360,10 +373,11 @@ impl TestContext {
         S: AsRef<OsStr>,
     {
         let mut command = Command::new(env!("CARGO_BIN_EXE_oqtopus"));
-        // A characterization test must fail if a supposedly migrated route silently delegates to
-        // Bash; otherwise it would not test the Rust implementation selected above.
         command.args(args);
         self.configure(&mut command);
+        // A characterization test must fail if a supposedly migrated route silently delegates to
+        // Bash; otherwise it would not test the Rust implementation at all. Set after `configure`,
+        // which clears the environment.
         command.env(FORBID_LEGACY_FALLBACK, "1");
         command
     }

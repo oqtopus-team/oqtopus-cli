@@ -16,6 +16,8 @@ pub(crate) fn fetch_remote_tags(repository: &str) -> Result<Vec<String>, ()> {
     let tags = parse_remote_refs(&advertisement)
         .into_iter()
         .filter_map(|(_, reference)| reference.strip_prefix("refs/tags/").map(str::to_owned))
+        // Git advertises an annotated tag twice: once as the tag object and once as `<tag>^{}`,
+        // the commit it points at. Keep only the tag name itself.
         .filter(|tag| !tag.ends_with("^{}"))
         .collect::<Vec<_>>();
     let mut tags = tags;
@@ -36,6 +38,11 @@ pub(crate) fn resolve_branch_commit(repository: &str, branch: &str) -> Result<St
 pub(crate) fn fetch_url(url: &str) -> Result<Vec<u8>, ()> {
     // The fixture hook is available only under the existing fallback-forbidden test mode, so it
     // does not affect a normal invocation unless that explicit test mode is also enabled.
+    //
+    // Two hooks exist because commands differ in how many requests they make. The manifest maps
+    // several URLs to several responses, for commands that resolve a ref and then download an
+    // archive. The single-response hook answers every request with the same bytes, optionally
+    // asserting the URL, which is what a one-request command needs.
     if env::var_os(FORBID_LEGACY_FALLBACK).is_some()
         && let Some(path) = env::var_os("OQTOPUS_TEST_HTTP_FIXTURE_MANIFEST")
     {
@@ -66,11 +73,20 @@ pub(crate) fn fetch_url(url: &str) -> Result<Vec<u8>, ()> {
     Ok(body)
 }
 
+/// Extracts `(sha, reference)` pairs from a git smart-HTTP advertisement.
+///
+/// The advertisement is scanned for `<40 hex digits> refs/...` rather than decoded as pkt-lines.
+/// Only the ref names matter here, and scanning tolerates the framing variations that appear
+/// around the first ref: a pkt-line length prefix, the `service=git-upload-pack` header, and the
+/// NUL-separated capability list. A 40-digit hexadecimal prefix is specific enough that no other
+/// part of the advertisement matches it.
 fn parse_remote_refs(advertisement: &[u8]) -> Vec<(String, String)> {
     let mut refs = Vec::new();
     let marker = b" refs/";
 
     for marker_start in find_all(advertisement, marker) {
+        // A SHA-1 object name is 40 hexadecimal digits, and it ends where the marker's space
+        // begins.
         if marker_start < 40
             || !advertisement[marker_start - 40..marker_start]
                 .iter()
@@ -78,7 +94,10 @@ fn parse_remote_refs(advertisement: &[u8]) -> Vec<(String, String)> {
         {
             continue;
         }
+        // Skip the marker's leading space; the reference itself starts at `refs/`.
         let reference_start = marker_start + 1;
+        // A ref name ends at the next separator: a newline between entries, or the NUL that
+        // introduces the capability list on the first one.
         let reference_end = advertisement[reference_start..]
             .iter()
             .position(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())

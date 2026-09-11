@@ -325,6 +325,8 @@ pub(crate) fn manager_install<W: Write>(
     }
     let environment = validate_environment("manager")?;
     let mut version = "";
+    // The manager is a single component, so unlike backend and cloud-local there is no component
+    // word to skip: the first positional argument is already the version.
     for arg in args {
         if arg.starts_with('-') {
             return Err(format!("unknown install option: {arg}"));
@@ -385,6 +387,10 @@ pub(crate) fn manager_update<W: Write>(
     Ok(success())
 }
 
+/// Installs an explicitly requested version, which may name a branch instead of a release.
+///
+/// The `update` commands deliberately call [`install_release`] directly rather than going through
+/// here: update means "move to the latest release", so it never accepts or preserves a branch.
 fn install_version<W: Write>(
     environment: &Environment,
     component: Component,
@@ -533,6 +539,12 @@ fn install_branch<W: Write>(
     )
 }
 
+/// Removes one installed component, and for a branch checkout its metadata binding as well.
+///
+/// The asymmetry is deliberate and matches the legacy CLI. Releases live in a shared install root
+/// and several environments may be bound to the same one, so removing a release here says nothing
+/// about what this environment should point at. A branch checkout belongs to this environment
+/// alone, so removing it leaves the binding naming a directory that no longer exists.
 fn uninstall<W: Write>(
     environment: &Environment,
     component: Component,
@@ -658,7 +670,9 @@ fn build_sse_runtime<W: Write>(
     let image = load_config_value(&environment.root.join("config/.env"), "SSE_CONTAINER_IMAGE")
         .ok_or("SSE_CONTAINER_IMAGE is missing from config/.env.")?;
     // Match `id -u` and `id -g` without adding an external command dependency.
+    // SAFETY: both calls take no arguments, always succeed, and return a plain integer.
     let uid = unsafe { libc::getuid() };
+    // SAFETY: as above.
     let gid = unsafe { libc::getgid() };
     progress(
         reporter,
@@ -686,6 +700,12 @@ fn build_sse_runtime<W: Write>(
     progress(reporter, format!("Built sse_runtime Docker image: {image}"))
 }
 
+/// Reads one `KEY=value` setting from an environment's `config/.env`.
+///
+/// Deliberately matches the legacy reader rather than a general dotenv parser: leading whitespace
+/// only marks a line as blank, it is never stripped from the key, so an indented assignment does
+/// not match. The value keeps everything after the first '=' with one layer of surrounding quotes
+/// removed.
 fn load_config_value(path: &Path, key: &str) -> Option<String> {
     let contents = fs::read_to_string(path).ok()?;
     contents.lines().find_map(|line| {
@@ -703,6 +723,12 @@ fn load_config_value(path: &Path, key: &str) -> Option<String> {
     })
 }
 
+/// Reports whether an existing directory holds a finished installation.
+///
+/// An interrupted install leaves a downloaded but unsynchronized tree behind, so the marker is the
+/// product of the synchronization step: the virtual environment `uv sync` creates, one per project
+/// for the multi-project engine. A static component runs no synchronization step, so extracting it
+/// is all there is to complete.
 fn component_complete(kind: ComponentKind, target: &Path) -> bool {
     match kind {
         ComponentKind::Engine => ENGINE_PROJECTS

@@ -315,7 +315,9 @@ slice that changes it.
    where it matters; snapshot changes are reviewed one by one, and deviations
    in details that nothing depends on, such as malformed-argument errors and
    generated usage text, are accepted and recorded. The downstream consumer
-   boundary is not relaxed by this step.
+   boundary is not relaxed by this step. As part of that refactoring, consolidate
+   the repeated operation dispatch in `main.rs` and the shared engine handling
+   and binding steps at the end of release and branch installation.
 
 The historical characterization branch may be consulted if useful, but this
 plan does not depend on reusing it.
