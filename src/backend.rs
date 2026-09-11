@@ -1,6 +1,5 @@
 //! Native backend commands and their result data.
 
-use std::ffi::OsString;
 use std::fs;
 use std::path::Path;
 
@@ -34,7 +33,7 @@ const SERVICES: [&str; 7] = [
 ];
 
 /// Validates the current backend environment and returns its metadata.
-pub(crate) fn backend_info(args: &[OsString]) -> Result<BackendInfo, String> {
+pub(crate) fn backend_info(args: &[String]) -> Result<BackendInfo, String> {
     if !args.is_empty() {
         return Err("oqtopus backend info does not accept arguments.".to_owned());
     }
@@ -43,7 +42,7 @@ pub(crate) fn backend_info(args: &[OsString]) -> Result<BackendInfo, String> {
 }
 
 /// Returns the observed process state of each managed backend service.
-pub(crate) fn backend_status(args: &[OsString]) -> Result<BackendStatus, String> {
+pub(crate) fn backend_status(args: &[String]) -> Result<BackendStatus, String> {
     if !args.is_empty() {
         return Err("oqtopus backend status does not accept arguments.".to_owned());
     }

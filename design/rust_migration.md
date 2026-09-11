@@ -215,6 +215,13 @@ or a fixed ratio of snapshot, integration, and unit tests.
   Rust's line parsing, while successful `info` output retains the original byte
   sequence. The legacy parser rejected these files because it included the
   carriage return in the field value.
+- Command-line arguments are required to be valid UTF-8. Bash forwards arbitrary
+  bytes, but no supported invocation needs them, and carrying `OsString` through
+  routing and every command signature costs more than the capability is worth.
+  An invocation with non-UTF-8 arguments therefore aborts in `std::env::args`
+  before reaching either implementation, which is the standard library's own
+  handling of the case. This is pinned by a Rust-only test rather than a
+  characterization case, because Bash accepts the same invocation.
 
 ## Completion during the hybrid period
 

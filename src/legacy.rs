@@ -1,7 +1,6 @@
 //! Process handoff for commands still implemented in Bash.
 
 use std::env;
-use std::ffi::OsString;
 use std::io;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
@@ -16,7 +15,7 @@ const FORBID_LEGACY_FALLBACK: &str = "OQTOPUS_FORBID_LEGACY_FALLBACK";
 const FALLBACK_FORBIDDEN_EXIT_CODE: i32 = 125;
 
 /// Replaces the current process with the legacy CLI, forwarding arguments unchanged.
-pub(crate) fn run_legacy(args: &[OsString]) -> ! {
+pub(crate) fn run_legacy(args: &[String]) -> ! {
     if env::var_os(FORBID_LEGACY_FALLBACK).is_some() {
         let _ = text::write_error(
             &mut io::stderr().lock(),

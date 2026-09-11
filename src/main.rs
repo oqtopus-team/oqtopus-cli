@@ -28,18 +28,21 @@ fn main() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
 
-    let args: Vec<_> = env::args_os().skip(1).collect();
+    let args: Vec<String> = env::args().skip(1).collect();
+    // Routing consumes at most the two leading words, so the remainder is the selected
+    // command's own argument list. Help, version, and legacy routes ignore it.
+    let command_args = args.get(2..).unwrap_or_default();
 
     let outcome = match route(&args) {
         Route::Help => text::write_help(&mut io::stdout().lock())
             .map_err(|error| format!("failed to write help: {error}")),
         Route::Version => text::write_version(&mut io::stdout().lock(), &version_info())
             .map_err(|error| format!("failed to write version: {error}")),
-        Route::BackendInfo => backend_info(&args[2..]).and_then(|info| {
+        Route::BackendInfo => backend_info(command_args).and_then(|info| {
             text::write_backend_info(&mut io::stdout().lock(), &info)
                 .map_err(|error| format!("failed to write backend info: {error}"))
         }),
-        Route::BackendStatus => backend_status(&args[2..]).and_then(|status| {
+        Route::BackendStatus => backend_status(command_args).and_then(|status| {
             text::write_backend_status(&mut io::stdout().lock(), &status)
                 .map_err(|error| format!("failed to write backend status: {error}"))
         }),
