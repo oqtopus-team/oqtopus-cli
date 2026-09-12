@@ -1,0 +1,11 @@
+---
+source: tests/characterization/operations.rs
+expression: normalized
+---
+exit: <N>
+--- stdout ---
+Building sse_runtime Docker image as example/sse:<N>
+docker build <TEST_ROOT>/xdg-data/oqtopus/backend/releases/engine-v<N>.<N>.<N>/sse_runtime -t example/sse:<N> --build-arg UID=<N><N><N><N> --build-arg GID=<N><N><N><N>
+Built sse_runtime Docker image: example/sse:<N>
+--- stderr ---
+--- end ---

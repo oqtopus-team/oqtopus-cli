@@ -1,0 +1,9 @@
+---
+source: tests/characterization/manager.rs
+expression: rendered
+---
+exit: 0
+--- stdout ---
+manager: Running (PID <PID>)
+--- stderr ---
+--- end ---

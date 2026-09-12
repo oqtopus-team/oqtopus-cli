@@ -1,0 +1,12 @@
+---
+source: tests/characterization/cloud_local.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+frontend:
+  v2.0.0
+  v1.10.0
+* v1.2.3 (installed)
+--- stderr ---
+--- end ---

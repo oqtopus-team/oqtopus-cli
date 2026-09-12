@@ -1,0 +1,9 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: unknown install option: --offline
+--- end ---

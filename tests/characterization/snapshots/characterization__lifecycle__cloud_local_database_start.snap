@@ -1,0 +1,17 @@
+---
+source: tests/characterization/lifecycle.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Starting db
+docker compose --project-name characterization -f <TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases/cloud-v1.2.3/backend/compose.yaml up -d db minio mc
+Waiting for db to be ready
+Waiting for db port to be reachable from the host
+db ready, applying migrations
+uv run --project <TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases/cloud-v1.2.3 alembic upgrade head
+Seeding db
+uv run --project <TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases/cloud-v1.2.3 python scripts/seed.py
+Started db
+--- stderr ---
+--- end ---

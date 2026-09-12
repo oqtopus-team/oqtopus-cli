@@ -1,0 +1,9 @@
+---
+source: tests/characterization/cloud_local.rs
+expression: "context.render_output(&context.run_snapshot_subject([\"cloud-local\", \"info\",\n\"unexpected\"]))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: oqtopus cloud-local info does not accept arguments.
+--- end ---

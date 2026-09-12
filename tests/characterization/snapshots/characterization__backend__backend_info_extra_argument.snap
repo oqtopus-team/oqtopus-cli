@@ -1,0 +1,9 @@
+---
+source: tests/characterization/backend.rs
+expression: context.render_output(&output)
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: oqtopus backend info does not accept arguments.
+--- end ---

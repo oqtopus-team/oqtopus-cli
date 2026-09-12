@@ -1,0 +1,9 @@
+---
+source: tests/characterization/init.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Created backend environment: <TEST_ROOT>/work/branch-demo
+--- stderr ---
+--- end ---

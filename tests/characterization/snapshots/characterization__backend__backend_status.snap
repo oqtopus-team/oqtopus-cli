@@ -1,0 +1,15 @@
+---
+source: tests/characterization/backend.rs
+expression: rendered
+---
+exit: 0
+--- stdout ---
+core: Running (PID <PID>)
+sse_engine: Stopped
+mitigator: Stopped
+estimator: Stopped
+combiner: Stopped
+tranqu: Stopped
+gateway: Stopped
+--- stderr ---
+--- end ---

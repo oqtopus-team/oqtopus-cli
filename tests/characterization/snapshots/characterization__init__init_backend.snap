@@ -1,0 +1,37 @@
+---
+source: tests/characterization/init.rs
+expression: "render_created_environment(&context, &output, \"demo\",\n&[\"config/.env\", \"compose.yaml\"])"
+---
+exit: 0
+--- stdout ---
+Created backend environment: <TEST_ROOT>/work/demo
+--- stderr ---
+--- end ---
+--- tree ---
+.metadata
+compose.yaml
+config/
+config/.env
+config/nested/
+config/nested/backend.toml
+logs/
+logs/combiner/
+logs/core/
+logs/estimator/
+logs/gateway/
+logs/mitigator/
+logs/sse_engine/
+logs/tranqu/
+pids/
+sse_work/
+--- .metadata ---
+template=backend
+install_root=<TEST_ROOT>/xdg-data/oqtopus/backend/releases
+environment_name=demo
+environment_root=<TEST_ROOT>/work/demo
+created_at=2031-12-13T14:15:16Z
+--- config/.env ---
+IMAGE=demo
+PAIR=demo-demo
+--- compose.yaml ---
+services: {}
