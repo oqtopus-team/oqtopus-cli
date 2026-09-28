@@ -1,0 +1,71 @@
+name: tests
+
+on:
+  # Pull requests cover branch work, so pushes only need to guard the trunk.
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The toolchain a contributor gets by default on Linux.
+          - name: linux-gnu
+            runner: ubuntu-latest
+            target: ""
+          # The toolchain release binaries are built with, so gnu/musl divergence
+          # (libc error strings, allocator, resolver) surfaces here rather than in a release.
+          - name: linux-musl
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          # Guards the Unix portability of the tests' shell fixtures and of src/, which calls
+          # libc directly in several places.
+          - name: macos
+            runner: macos-15
+            target: ""
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add the cross-compilation target
+        if: matrix.target != ''
+        run: rustup target add ${{ matrix.target }}
+
+      # musl-gcc builds ring's C sources; the Rust std for the target ships its own crt objects.
+      - name: Install the musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_${TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
+        env:
+          TARGET: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      # A musl binary runs natively on the Linux runner, so no test runner indirection is needed.
+      - name: Run tests
+        run: |
+          if [ -n "$TARGET" ]; then
+            cargo test --locked --target "$TARGET"
+          else
+            cargo test --locked
+          fi
+        env:
+          TARGET: ${{ matrix.target }}

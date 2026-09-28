@@ -1,0 +1,17 @@
+---
+source: tests/characterization/main.rs
+expression: stdout
+---
+Usage:
+  oqtopus <command> [args]
+
+Commands:
+  init         Create an OQTOPUS environment.
+  cloud-local  Manage local cloud-local components and services.
+  backend      Manage local backend components and services.
+  manager      Manage the local manager component and service.
+  completion   Print shell completion scripts.
+  version      Print the installed CLI version.
+  help         Show help.
+
+Run 'oqtopus <command> help' for command-specific help.

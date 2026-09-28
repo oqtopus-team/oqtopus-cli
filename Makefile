@@ -2,7 +2,7 @@ SHELL := bash
 .SHELLFLAGS := -eu -o pipefail -c
 .DEFAULT_GOAL := help
 
-.PHONY: install diff-backend-configs docs-lint docs-build docs-serve help
+.PHONY: install test test-characterization diff-backend-configs docs-lint docs-build docs-serve help
 
 install: ## Install dependencies and configure git hooks and commit template
 	@uv sync --all-groups
@@ -10,6 +10,12 @@ install: ## Install dependencies and configure git hooks and commit template
 		git config --local commit.template .gitmessage; \
 	fi
 	@chmod +x scripts/diff-backend-configs.sh
+
+test: ## Run Rust tests
+	@cargo test --locked
+
+test-characterization: ## Run characterization snapshots
+	@cargo test --locked --test characterization
 
 diff-backend-configs: ## Compare backend template configs against upstream repositories
 	@scripts/diff-backend-configs.sh

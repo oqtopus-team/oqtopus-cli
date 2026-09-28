@@ -1,0 +1,103 @@
+---
+source: tests/characterization/completion.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+_oqtopus()
+{
+  local cur prev words cword
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  case "${COMP_WORDS[1]}" in
+    backend)
+      case "${COMP_WORDS[2]}" in
+        install)
+          COMPREPLY=( $(compgen -W "engine tranqu gateway all --skip-sse-build help --help" -- "$cur") )
+          return 0
+          ;;
+        build)
+          COMPREPLY=( $(compgen -W "sse-runtime help --help" -- "$cur") )
+          return 0
+          ;;
+        versions)
+          COMPREPLY=( $(compgen -W "engine tranqu gateway help --help" -- "$cur") )
+          return 0
+          ;;
+        update|uninstall)
+          COMPREPLY=( $(compgen -W "engine tranqu gateway help --help" -- "$cur") )
+          return 0
+          ;;
+        start)
+          COMPREPLY=( $(compgen -W "core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help" -- "$cur") )
+          return 0
+          ;;
+        stop|restart)
+          COMPREPLY=( $(compgen -W "core sse_engine mitigator estimator combiner tranqu gateway all help --help" -- "$cur") )
+          return 0
+          ;;
+        device-status)
+          COMPREPLY=( $(compgen -W "show active inactive maintenance help --help" -- "$cur") )
+          return 0
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "install build versions uninstall update start stop restart status device-status info help --help" -- "$cur") )
+          return 0
+          ;;
+      esac
+      ;;
+    cloud-local)
+      case "${COMP_WORDS[2]}" in
+        install|uninstall|update|versions)
+          COMPREPLY=( $(compgen -W "cloud frontend admin all help --help" -- "$cur") )
+          return 0
+          ;;
+        start|stop|restart)
+          COMPREPLY=( $(compgen -W "db user provider admin user_signup worker all --foreground help --help" -- "$cur") )
+          return 0
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "versions install uninstall update start stop restart status info help --help" -- "$cur") )
+          return 0
+          ;;
+      esac
+      ;;
+    manager)
+      case "${COMP_WORDS[2]}" in
+        install|versions|update|uninstall)
+          COMPREPLY=( $(compgen -W "help --help" -- "$cur") )
+          return 0
+          ;;
+        start)
+          COMPREPLY=( $(compgen -W "--foreground help --help" -- "$cur") )
+          return 0
+          ;;
+        stop|restart)
+          COMPREPLY=( $(compgen -W "help --help" -- "$cur") )
+          return 0
+          ;;
+        *)
+          COMPREPLY=( $(compgen -W "install versions uninstall update start stop restart status info help --help" -- "$cur") )
+          return 0
+          ;;
+      esac
+      ;;
+    init)
+      COMPREPLY=( $(compgen -W "--template --branch backend cloud-local manager help --help" -- "$cur") )
+      return 0
+      ;;
+    completion)
+      COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+      return 0
+      ;;
+    *)
+      COMPREPLY=( $(compgen -W "init backend cloud-local manager completion version help --help --version" -- "$cur") )
+      return 0
+      ;;
+  esac
+}
+complete -F _oqtopus oqtopus
+--- stderr ---
+--- end ---

@@ -1,0 +1,25 @@
+---
+source: tests/characterization/operations.rs
+expression: context.normalize(&observation)
+---
+--- update ---
+exit: 0
+--- stdout ---
+Installing cloud v2.0.0
+uv sync --frozen --no-dev --project <TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases/cloud-v2.0.0
+Bound cloud_local_cloud_version=v2.0.0
+--- stderr ---
+--- end ---
+--- uninstall ---
+exit: 0
+--- stdout ---
+Removed <TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases/cloud-v2.0.0
+--- stderr ---
+--- end ---
+--- metadata ---
+template=cloud-local
+install_root=<TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases
+environment_name=characterization
+environment_root=<TEST_ROOT>/work
+created_at=2000-01-02T03:04:05Z
+cloud_local_cloud_version=v2.0.0

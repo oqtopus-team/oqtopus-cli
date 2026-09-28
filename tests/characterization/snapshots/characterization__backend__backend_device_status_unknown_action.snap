@@ -1,0 +1,10 @@
+---
+source: tests/characterization/backend.rs
+expression: "context.render_output(&context.run_snapshot_subject([\"backend\",\n\"device-status\", \"unknown\"]))"
+---
+exit: 1
+--- stdout ---
+Usage:
+  oqtopus backend device-status <show|active|inactive|maintenance>
+--- stderr ---
+--- end ---

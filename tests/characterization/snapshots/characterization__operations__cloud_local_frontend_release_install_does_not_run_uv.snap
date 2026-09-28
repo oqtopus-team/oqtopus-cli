@@ -1,0 +1,19 @@
+---
+source: tests/characterization/operations.rs
+expression: context.normalize(&observation)
+---
+exit: 0
+--- stdout ---
+Installing frontend v1.2.3
+Bound cloud_local_frontend_version=v1.2.3
+--- stderr ---
+--- end ---
+--- metadata ---
+template=cloud-local
+install_root=<TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases
+environment_name=characterization
+environment_root=<TEST_ROOT>/work
+created_at=2000-01-02T03:04:05Z
+cloud_local_frontend_version=v1.2.3
+--- release tree ---
+package.json

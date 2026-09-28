@@ -1,0 +1,18 @@
+---
+source: tests/characterization/routing.rs
+expression: "context.normalize(&String::from_utf8_lossy(&canonical.stdout))"
+---
+Usage:
+  oqtopus manager <command> [args]
+
+Commands:
+  install    Install a manager release.
+  uninstall  Remove an installed release.
+  update     Install the latest release and update the environment binding.
+  versions   List available manager versions.
+  start      Start the manager service.
+  stop       Stop the manager service.
+  restart    Restart the manager service.
+  status     Show process status.
+  info       Show manager environment information.
+  help       Show this help.

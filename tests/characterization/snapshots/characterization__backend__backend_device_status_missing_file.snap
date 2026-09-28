@@ -1,0 +1,9 @@
+---
+source: tests/characterization/backend.rs
+expression: "context.render_output(&context.run_snapshot_subject([\"backend\",\n\"device-status\", \"show\"]))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: device status file not found: <TEST_ROOT>/work/config/gateway/device_status
+--- end ---

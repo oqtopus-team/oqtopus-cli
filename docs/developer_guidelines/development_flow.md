@@ -7,7 +7,7 @@ As shown in the diagram below, the feature branches (`feature/xxx`) are created 
 
 ```mermaid
 gitGraph LR:
-  commit tag:"release-v1.0.0"
+  commit tag:"v1.0.0"
   branch feature/xxx
   commit
   commit
@@ -20,14 +20,14 @@ gitGraph LR:
   commit
   checkout main
   merge feature/xxx
-  commit tag:"release-v1.1.0"
+  commit tag:"v1.1.0"
   checkout main
   branch hotfix/zzz
   commit
   commit
   checkout main
   merge hotfix/zzz
-  commit tag:"release-v1.2.0"
+  commit tag:"v1.2.0"
 ```
 
 ### Branch Naming
@@ -101,3 +101,28 @@ This project uses GitHub Actions to automate checks and repository management.
 
 Labels are automatically assigned to pull requests targeting the default
 branch based on the commit message prefix (see [Conventional Commits](#conventional-commits)).
+
+## Release Procedure
+
+The executable embeds `[package].version` from `Cargo.toml`. The release workflow
+checks that the Git tag equals `v` followed by this version; it does not inject a
+version or modify the manifest.
+
+1. Before each release, manually bump `[package].version` in `Cargo.toml` to the
+   intended version (for example, `1.2.3`).
+2. Run `cargo check` to update the package entry in `Cargo.lock`, then run
+   `cargo test --locked` and `cargo clippy --all-targets --locked`.
+3. Include both `Cargo.toml` and `Cargo.lock` in the release preparation commit
+   and merge the reviewed change into `main`.
+4. Create and push the matching tag (for example, `v1.2.3`) on that commit.
+   `.github/workflows/release.yml` verifies the version, builds and smoke-tests
+   the platform binaries, then publishes their archives and checksums.
+5. Verify that the published binary reports the intended version with
+   `oqtopus version`.
+
+A tag containing a hyphen (for example, `v2.0.0-beta.1`) is published as a
+GitHub prerelease. `scripts/install.sh` only picks plain `vX.Y.Z` tags as the
+default version, so a prerelease is installed only when requested explicitly.
+
+A workflow dispatch can rehearse the build and smoke tests from a branch;
+publishing remains restricted to tags.

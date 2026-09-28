@@ -1,0 +1,13 @@
+---
+source: tests/characterization/backend.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+template=backend
+install_root=<TEST_ROOT>/releases
+engine_version=v1.2.3
+environment_root=<TEST_ROOT>/work
+environment_name=legacy
+--- stderr ---
+--- end ---

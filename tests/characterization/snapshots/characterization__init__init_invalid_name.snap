@@ -1,0 +1,11 @@
+---
+source: tests/characterization/init.rs
+expression: context.render_output(&output)
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: invalid env_name 'Bad_Name'.
+env_name must match: ^[a-z0-9][a-z0-9_.-]*$
+Use lowercase letters, digits, '.', '_' or '-', and start with a letter or digit.
+--- end ---

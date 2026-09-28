@@ -1,0 +1,18 @@
+---
+source: tests/characterization/routing.rs
+expression: "context.normalize(&String::from_utf8_lossy(&canonical.stdout))"
+---
+Usage:
+  oqtopus cloud-local <command> [args]
+
+Commands:
+  install         Install cloud-local component releases.
+  versions        List available component versions.
+  uninstall       Remove an installed release.
+  update          Install the latest release of a component.
+  start           Start a managed service.
+  stop            Stop a managed service.
+  restart         Restart a managed service.
+  status          Show process status.
+  info            Show environment metadata.
+  help            Show this help.

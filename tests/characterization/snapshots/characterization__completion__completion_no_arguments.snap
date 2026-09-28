@@ -1,0 +1,10 @@
+---
+source: tests/characterization/completion.rs
+expression: context.render_output(&context.run_snapshot_subject(args))
+---
+exit: 1
+--- stdout ---
+Usage:
+  oqtopus completion <bash|zsh|fish>
+--- stderr ---
+--- end ---

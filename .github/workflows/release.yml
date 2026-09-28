@@ -1,0 +1,169 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  # Lets you rehearse the build and smoke jobs from a branch; the release job stays tag-only.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify the tag matches the crate version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          crate_version=$(cargo metadata --no-deps --format-version 1 \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          if [ "v$crate_version" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match Cargo.toml version $crate_version" >&2
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # musl-gcc builds ring's C sources; the Rust std for the target ships its own crt objects.
+      - name: Install the musl toolchain
+        if: contains(matrix.target, '-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_${TARGET//-/_}=musl-gcc" >> "$GITHUB_ENV"
+        env:
+          TARGET: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Confirm the musl build is statically linked
+        if: contains(matrix.target, '-musl')
+        run: |
+          binary=target/${{ matrix.target }}/release/oqtopus
+          file "$binary"
+          # A static binary makes ldd report no shared objects at all, so any "=>" line is a leak.
+          if ldd "$binary" 2>&1 | grep -q '=>'; then
+            echo "expected a static binary, but it has shared library dependencies" >&2
+            ldd "$binary" >&2
+            exit 1
+          fi
+
+      - name: Package
+        run: |
+          # A dispatch run names the ref after a branch, which may contain a slash.
+          name="oqtopus-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp target/${{ matrix.target }}/release/oqtopus "dist/$name/"
+          cp LICENSE README.md "dist/$name/"
+          tar -czf "dist/$name.tar.gz" -C dist "$name"
+          rm -rf "dist/$name"
+          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # Runs the packaged binary on a clean runner, so anything baked into the build machine's
+  # filesystem (an absolute path, a stray dependency) fails here rather than for a user.
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.target }}
+          path: dist
+
+      - name: Unpack
+        run: |
+          cd dist
+          shasum -a 256 -c ./*.sha256
+          tar -xzf ./*.tar.gz --strip-components=1
+          chmod +x oqtopus
+
+      - name: Run the migrated commands
+        run: |
+          set -x
+          dist/oqtopus --help
+          dist/oqtopus --version
+          dist/oqtopus version
+
+          # `backend info` fails without an installed environment; confirm the standalone binary
+          # reports that on its own rather than crashing or hanging.
+          if dist/oqtopus backend info; then
+            echo "backend info unexpectedly succeeded without an environment" >&2
+            exit 1
+          fi
+
+      - name: Confirm the reported version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          dist/oqtopus --version | grep -F -- "${GITHUB_REF_NAME#v}"
+
+  release:
+    needs: [build, smoke]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Collect checksums
+        run: |
+          cd dist
+          cat ./*.sha256 > SHA256SUMS
+          rm ./*.sha256
+          cat SHA256SUMS
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

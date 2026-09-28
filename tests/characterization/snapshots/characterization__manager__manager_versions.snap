@@ -1,0 +1,12 @@
+---
+source: tests/characterization/manager.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+manager:
+  v2.0.0
+  v1.10.0
+  v1.2.3
+--- stderr ---
+--- end ---

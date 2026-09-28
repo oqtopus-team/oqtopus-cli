@@ -1,0 +1,9 @@
+---
+source: tests/characterization/lifecycle.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+manager: Stopped
+--- stderr ---
+--- end ---

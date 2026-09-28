@@ -2,6 +2,11 @@
 
 This page summarizes the user-facing OQTOPUS CLI commands.
 
+Arguments must be valid UTF-8. Invalid arguments produce an `Error: ...` message
+on stderr and exit status 1. An empty command word shows help, including after
+`backend`, `cloud-local`, or `manager`. For `backend` and `cloud-local`, an empty
+`start` or `install` target shows command usage and exits with status 1.
+
 ## Top-Level Commands
 
 ```bash
@@ -25,13 +30,21 @@ oqtopus init <env_name> --template backend --branch <branch>
 oqtopus init <env_name> --template manager
 ```
 
-Creates a local environment from the specified template.
+Creates a local environment from the specified template. Template symbolic links
+must resolve within the copied template; escaping links and link cycles are
+rejected before copying or rendering files.
 
 By default, the template is fetched from the `main` branch of `oqtopus-cli`.
 Pass `--branch <branch>` to fetch it from a different branch instead — mainly
 useful for testing in-development templates.
 
 ## Cloud-Local Component Management
+
+`install`, `uninstall`, and `update` require `environment_name` (or the legacy
+`env_name`) in `.metadata`, as well as `install_root`.
+
+When `status` finds multiple containers for a Compose service, it reports the
+first name so each service remains on a single output line.
 
 ```bash
 oqtopus cloud-local versions <cloud|frontend|admin>

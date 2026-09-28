@@ -1,0 +1,11 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus backend uninstall <engine|tranqu|gateway> <version>
+  oqtopus backend uninstall <engine|tranqu|gateway> branch:<branch>
+--- stderr ---
+--- end ---

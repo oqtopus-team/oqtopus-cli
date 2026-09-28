@@ -1,0 +1,10 @@
+---
+source: tests/characterization/cloud_local.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus cloud-local versions <cloud|frontend|admin>
+--- stderr ---
+--- end ---

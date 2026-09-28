@@ -1,0 +1,10 @@
+---
+source: tests/characterization/backend.rs
+expression: "no_metadata.render_output(&no_metadata.run_snapshot_subject([\"backend\",\n\"info\"]))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: .metadata not found.
+This directory is not an OQTOPUS backend environment.
+--- end ---
