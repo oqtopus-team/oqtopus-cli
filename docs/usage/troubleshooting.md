@@ -36,6 +36,39 @@ The current directory must match the `environment_root` recorded in `.metadata`.
 This can happen if the environment directory was moved after creation. Create a
 new environment or move the directory back to its recorded path.
 
+## Downloads Fail Behind A Proxy Or Private CA
+
+`init`, `install`, `update`, and `versions` download from GitHub over HTTPS.
+
+Certificates are verified against the operating system's trust store, so a
+private or TLS-inspection CA installed system-wide is trusted. On Linux, the
+`SSL_CERT_FILE` and `SSL_CERT_DIR` variables select a different CA bundle or
+directory.
+
+Proxies are read from the same variables curl uses for HTTPS, in this order:
+`https_proxy`, `HTTPS_PROXY`, `all_proxy`, `ALL_PROXY`. `http_proxy` is not used.
+`http://`, `https://`, `socks4://`, `socks4a://`, `socks5://`, and `socks5h://`
+proxies are supported. `no_proxy` (or `NO_PROXY`) takes a comma-separated list of
+host names; an entry such as `github.com` also matches its subdomains, and `*`
+disables the proxy. IP ranges in CIDR notation are not supported.
+
+If the proxy port is omitted, it defaults to `1080`. Credentials embedded in the
+proxy URL are percent-decoded: `http://user:p%40ss@proxy.example.com:3128` uses
+the password `p@ss`. A literal `+` stays `+`.
+
+There is a known limitation in the HTTP library, ureq, when handling proxy
+credentials. Credentials that decode to `/`, `?`, or `#`, spaces, or non-ASCII
+characters cannot currently be used. SOCKS5 and SOCKS5h passwords containing
+`:` also fail. Settings that alter the decoded username or password are rejected
+rather than used with a different proxy address or altered credentials.
+HTTP and HTTPS proxy passwords may
+contain `:`, but HTTP Basic authentication cannot represent `:` in a username.
+
+```bash
+export https_proxy=http://proxy.example.com:3128
+oqtopus backend versions
+```
+
 ## Docker Is Required For Engine Install
 
 Installing `engine` builds the `sse_runtime` Docker image.
@@ -62,25 +95,6 @@ oqtopus backend build sse-runtime
 Backend and cloud-local components are synchronized and launched with `uv`.
 
 Install `uv` before installing or starting components.
-
-## Service Fails To Start Because The Python Environment Is Missing
-
-Services are started with `uv run --no-sync`, so the environment built at
-install time is used as is. If it is missing or outdated (for example, a
-component installed by an older CLI), uninstall that version and install it
-again. `install` and `update` reuse an existing installation of the same
-version without synchronizing it again.
-
-```bash
-oqtopus backend uninstall <engine|tranqu|gateway> <version>
-oqtopus backend install <engine|tranqu|gateway> <version>
-
-oqtopus cloud-local uninstall cloud <version>
-oqtopus cloud-local install cloud <version>
-
-oqtopus manager uninstall <version>
-oqtopus manager install <version>
-```
 
 ## Branch Name Not Found (Backend)
 

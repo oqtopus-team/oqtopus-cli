@@ -1,0 +1,14 @@
+---
+source: tests/characterization/manager.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+template=manager
+install_root=<TEST_ROOT>/xdg-data/oqtopus/manager/releases
+environment_name=characterization
+environment_root=<TEST_ROOT>/work
+created_at=2000-01-02T03:04:05Z
+manager_version=v1.2.3
+--- stderr ---
+--- end ---

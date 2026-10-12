@@ -1,0 +1,9 @@
+---
+source: tests/characterization/manager.rs
+expression: "context.render_output(&context.run_snapshot_subject([\"manager\", \"status\",\n\"unexpected\"]))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: oqtopus manager status does not accept arguments.
+--- end ---

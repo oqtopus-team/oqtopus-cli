@@ -1,0 +1,23 @@
+---
+source: tests/characterization/completion.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+complete -c oqtopus -f -n "__fish_use_subcommand" -a "init backend cloud-local manager completion version help --help --version"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from init" -a "--template --branch backend cloud-local manager help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend" -a "install build versions uninstall update start stop restart status device-status info help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from install" -a "engine tranqu gateway all --skip-sse-build help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from build" -a "sse-runtime help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from versions update uninstall" -a "engine tranqu gateway help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from start" -a "core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from stop restart" -a "core sse_engine mitigator estimator combiner tranqu gateway all help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from backend; and __fish_seen_subcommand_from device-status" -a "show active inactive maintenance help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from cloud-local" -a "versions install uninstall update start stop restart status info help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from cloud-local; and __fish_seen_subcommand_from install uninstall update versions" -a "cloud frontend admin all help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from cloud-local; and __fish_seen_subcommand_from start stop restart" -a "db user provider admin user_signup worker all --foreground help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from manager" -a "install versions uninstall update start stop restart status info help --help"
+complete -c oqtopus -f -n "__fish_seen_subcommand_from manager; and __fish_seen_subcommand_from start" -a "--foreground help --help"
+--- stderr ---
+--- end ---

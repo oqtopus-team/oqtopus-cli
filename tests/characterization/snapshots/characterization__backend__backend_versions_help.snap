@@ -1,0 +1,10 @@
+---
+source: tests/characterization/backend.rs
+expression: context.render_output(&canonical)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus backend versions <engine|tranqu|gateway>
+--- stderr ---
+--- end ---

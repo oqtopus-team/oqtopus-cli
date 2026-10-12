@@ -1,0 +1,42 @@
+[package]
+name = "oqtopus-cli"
+version = "2.0.0-beta.1"
+edition = "2024"
+publish = false
+autotests = false
+
+[dependencies]
+flate2 = "1"
+libc = "0.2"
+percent-encoding = "2"
+tar = "0.4"
+tempfile = "3"
+# Trust the OS certificate store and support SOCKS proxies, as curl did.
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier", "socks-proxy"] }
+
+[features]
+# Compiles the `OQTOPUS_TEST_*` fixture overrides the characterization suite needs.
+# Release builds leave it off so those variables have no effect.
+test-hooks = []
+
+[[bin]]
+name = "oqtopus"
+path = "src/main.rs"
+
+[[test]]
+name = "characterization"
+path = "tests/characterization/main.rs"
+
+[[test]]
+name = "cli"
+path = "tests/cli.rs"
+
+[dev-dependencies]
+base64 = "0.23"
+insta = "1"
+
+[profile.release]
+# Distributed binaries favor size and startup over build time.
+strip = true
+lto = true
+codegen-units = 1

@@ -1,0 +1,9 @@
+---
+source: tests/characterization/backend.rs
+expression: "context.render_output(&context.run_snapshot_subject_with_remote_refs([\"backend\",\n\"versions\", \"engine\"],\nb\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/tags/v2.0.0-rc.1\\n\", false,))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: no stable versions found for engine.
+--- end ---

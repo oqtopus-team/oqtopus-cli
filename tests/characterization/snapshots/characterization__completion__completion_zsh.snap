@@ -1,0 +1,62 @@
+---
+source: tests/characterization/completion.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+#compdef oqtopus
+
+_oqtopus() {
+  local -a commands backend_commands cloud_local_commands install_components build_targets update_components start_services services device_status cloud_local_components cloud_local_services manager_commands manager_help_only manager_start_opts shells templates
+  commands=(init backend cloud-local manager completion version help --help --version)
+  backend_commands=(install build versions uninstall update start stop restart status device-status info help --help)
+  cloud_local_commands=(versions install uninstall update start stop restart status info help --help)
+  install_components=(engine tranqu gateway all --skip-sse-build help --help)
+  build_targets=(sse-runtime help --help)
+  update_components=(engine tranqu gateway help --help)
+  start_services=(core sse_engine mitigator estimator combiner tranqu gateway all --foreground help --help)
+  services=(core sse_engine mitigator estimator combiner tranqu gateway all help --help)
+  device_status=(show active inactive maintenance help --help)
+  cloud_local_components=(cloud frontend admin all help --help)
+  cloud_local_services=(db user provider admin user_signup worker all --foreground help --help)
+  manager_commands=(install versions uninstall update start stop restart status info help --help)
+  manager_help_only=(help --help)
+  manager_start_opts=(--foreground help --help)
+  shells=(bash zsh fish)
+  templates=(backend cloud-local manager)
+
+  case $words[2] in
+    backend)
+      case $words[3] in
+        install) compadd -- $install_components ;;
+        build) compadd -- $build_targets ;;
+        versions|update|uninstall) compadd -- $update_components ;;
+        start) compadd -- $start_services ;;
+        stop|restart) compadd -- $services ;;
+        device-status) compadd -- $device_status ;;
+        *) compadd -- $backend_commands ;;
+      esac
+      ;;
+    cloud-local)
+      case $words[3] in
+        install|uninstall|update|versions) compadd -- $cloud_local_components ;;
+        start|stop|restart) compadd -- $cloud_local_services ;;
+        *) compadd -- $cloud_local_commands ;;
+      esac
+      ;;
+    manager)
+      case $words[3] in
+        install|versions|update|uninstall|stop|restart) compadd -- $manager_help_only ;;
+        start) compadd -- $manager_start_opts ;;
+        *) compadd -- $manager_commands ;;
+      esac
+      ;;
+    init) compadd -- --template --branch help --help $templates ;;
+    completion) compadd -- $shells ;;
+    *) compadd -- $commands ;;
+  esac
+}
+
+_oqtopus "$@"
+--- stderr ---
+--- end ---

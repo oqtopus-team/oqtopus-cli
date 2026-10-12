@@ -1,0 +1,10 @@
+---
+source: tests/characterization/completion.rs
+expression: context.render_output(&help)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus completion <bash|zsh|fish>
+--- stderr ---
+--- end ---

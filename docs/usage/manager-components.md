@@ -113,9 +113,7 @@ Install and update both download the tagged release source archive and run
 `uv sync --frozen --no-dev --project <target_dir>` to build an isolated
 virtual environment for that release. `uv` must be installed. `uv` provisions
 the Python interpreter version required by the release automatically if it is
-not already available. Starting the manager runs `uv run --no-sync`, so the
-environment is not changed at start time; if it is missing or outdated,
-uninstall that version and install it again.
+not already available.
 
 There is no Docker build step for manager, unlike `engine`'s `sse_runtime`
 image in the backend template.

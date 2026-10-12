@@ -28,7 +28,8 @@ assets/
 
 Unlike the backend and cloud-local templates, there is no `config/.env` and no
 per-service subdirectory: manager has a single component and a single service,
-and all of its settings live in `config/config.yaml`.
+and all of its settings live in `config/config.yaml`. `oqtopus manager start`
+does not read a `config/.env` even if one is added by hand.
 
 ## `config/config.yaml`
 
