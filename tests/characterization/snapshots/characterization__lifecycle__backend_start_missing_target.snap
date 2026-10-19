@@ -1,0 +1,11 @@
+---
+source: tests/characterization/lifecycle.rs
+expression: context.render_output(&output)
+---
+exit: 1
+--- stdout ---
+Usage:
+  oqtopus backend start <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway|all>
+  oqtopus backend start <core|sse_engine|mitigator|estimator|combiner|tranqu|gateway> --foreground
+--- stderr ---
+--- end ---

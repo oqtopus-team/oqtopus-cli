@@ -1,0 +1,14 @@
+---
+source: tests/characterization/backend.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+engine:
+* branch:develop (installed)
+  v2.0.0
+  v1.10.0 (installed)
+  v1.2.3
+  v0.9.0 (installed, not in remote tags)
+--- stderr ---
+--- end ---

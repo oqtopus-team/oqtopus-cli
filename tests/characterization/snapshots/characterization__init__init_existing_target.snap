@@ -1,0 +1,9 @@
+---
+source: tests/characterization/init.rs
+expression: "context.render_output(&context.run_snapshot_subject([\"init\", \"demo\",\n\"--template\", \"backend\",]))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: target directory already exists: demo
+--- end ---

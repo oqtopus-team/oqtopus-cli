@@ -76,7 +76,7 @@ oqtopus cloud-local status
 Example output:
 
 ```text
-db: Running (db, seaweedfs)
+db: Running (my-cloud-db-1, my-cloud-minio-1, my-cloud-mc-1)
 worker: Running (PID 12345)
 user_signup: Running (PID 12346)
 admin: Running (PID 12347)
@@ -84,15 +84,8 @@ provider: Running (PID 12348)
 user: Running (PID 12349)
 ```
 
-`db` covers the database and the object storage (`seaweedfs` or `minio`,
-selected by `STORAGE_STACK`) and shows one of the following. Other services
-show their PID.
-
-| Output | Meaning |
-| --- | --- |
-| `db: Running (db, seaweedfs)` | Both are running. |
-| `db: Partially running (db: running, seaweedfs: stopped)` | Only some are running. |
-| `db: Stopped` | None is running, or the state cannot be determined. |
+`db` shows the names of running Docker containers in the environment's Compose
+project. Other services show their PID.
 
 ## Stop All Services
 
@@ -109,9 +102,7 @@ The stop order is the reverse of the start order:
 5. `worker`
 6. `db`
 
-`db` is stopped with `oqtopus-cloud-infra stop`, which stops only the database
-and object storage containers. Other containers, the network and the data
-volumes are kept.
+`db` is stopped via `docker compose down`, which removes the containers.
 
 ## Stop One Service
 

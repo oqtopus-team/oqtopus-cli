@@ -1,0 +1,11 @@
+---
+source: tests/characterization/operations.rs
+expression: context.normalize(&context.render_output(&output))
+---
+exit: 0
+--- stdout ---
+Installing gateway v2.0.0
+uv sync --frozen --no-dev --project <TEST_ROOT>/xdg-data/oqtopus/backend/releases/gateway-v2.0.0
+Bound gateway_version=v2.0.0
+--- stderr ---
+--- end ---

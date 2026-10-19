@@ -1,0 +1,29 @@
+---
+source: tests/characterization/init.rs
+expression: "render_created_environment(&context, &output, \"cloud\", &[\"config/.env\"])"
+---
+exit: 0
+--- stdout ---
+Created cloud-local environment: <TEST_ROOT>/work/cloud
+--- stderr ---
+--- end ---
+--- tree ---
+.metadata
+config/
+config/.env
+logs/
+logs/admin/
+logs/db/
+logs/provider/
+logs/user/
+logs/user_signup/
+logs/worker/
+pids/
+--- .metadata ---
+template=cloud-local
+install_root=<TEST_ROOT>/xdg-data/oqtopus/cloud-local/releases
+environment_name=cloud
+environment_root=<TEST_ROOT>/work/cloud
+created_at=2031-12-13T14:15:16Z
+--- config/.env ---
+ENV=local

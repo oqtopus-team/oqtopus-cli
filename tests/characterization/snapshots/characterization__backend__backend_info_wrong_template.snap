@@ -1,0 +1,9 @@
+---
+source: tests/characterization/backend.rs
+expression: "wrong_template.render_output(&wrong_template.run_snapshot_subject([\"backend\",\n\"info\"]))"
+---
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: invalid environment template. Found template='manager', but 'oqtopus backend' requires template='backend'.
+--- end ---

@@ -1,0 +1,11 @@
+---
+source: tests/characterization/operations.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+Usage:
+  oqtopus cloud-local uninstall <cloud|frontend|admin> <version>
+  oqtopus cloud-local uninstall <cloud|frontend|admin> branch:<branch>
+--- stderr ---
+--- end ---

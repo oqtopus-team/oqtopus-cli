@@ -1,0 +1,20 @@
+---
+source: tests/characterization/routing.rs
+expression: "context.normalize(&String::from_utf8_lossy(&canonical.stdout))"
+---
+Usage:
+  oqtopus backend <command> [args]
+
+Commands:
+  install         Install backend component releases.
+  build           Build backend runtime artifacts.
+  versions        List available component versions.
+  uninstall       Remove an installed release.
+  update          Install the latest release of a component.
+  start           Start a managed service.
+  stop            Stop a managed service.
+  restart         Restart a managed service.
+  status          Show process status.
+  device-status   Show or update gateway device status.
+  info            Show backend environment information.
+  help            Show help.

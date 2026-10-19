@@ -1,0 +1,28 @@
+---
+source: tests/characterization/init.rs
+expression: "render_created_environment(&context, &output, \"manager\",\n&[\"config/config.yaml\", \"assets/icon.svg\"],)"
+---
+exit: 0
+--- stdout ---
+Created manager environment: <TEST_ROOT>/work/manager
+--- stderr ---
+--- end ---
+--- tree ---
+.metadata
+assets/
+assets/icon.svg
+config/
+config/config.yaml
+logs/
+pids/
+--- .metadata ---
+template=manager
+install_root=<TEST_ROOT>/xdg-data/oqtopus/manager/releases
+environment_name=manager
+environment_root=<TEST_ROOT>/work/manager
+created_at=2031-12-13T14:15:16Z
+--- config/config.yaml ---
+server:
+  port: 38000
+--- assets/icon.svg ---
+<svg></svg>
