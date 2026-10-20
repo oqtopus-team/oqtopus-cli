@@ -53,10 +53,14 @@ pub(crate) struct ServiceCommand {
 }
 
 impl ServiceCommand {
-    pub(crate) fn uv(args: Vec<String>) -> Self {
+    /// `uv run --no-sync` with `args`. Environments are synchronized only by
+    /// install and update, so starting a service never installs or changes packages.
+    pub(crate) fn uv_run(args: Vec<String>) -> Self {
+        let mut command = vec!["run".into(), "--no-sync".into()];
+        command.extend(args);
         Self {
             program: "uv",
-            args,
+            args: command,
             environment: Vec::new(),
             config_env: false,
         }

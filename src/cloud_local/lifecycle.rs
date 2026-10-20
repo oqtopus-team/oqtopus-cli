@@ -135,8 +135,7 @@ fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<Servic
     }
     let command = match service {
         "worker" => {
-            let mut command = ServiceCommand::uv(vec![
-                "run".into(),
+            let mut command = ServiceCommand::uv_run(vec![
                 "--project".into(),
                 cloud.display().to_string(),
                 "python".into(),
@@ -180,8 +179,7 @@ fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<Servic
                 ),
             };
             let port = env::var(port_var).unwrap_or_else(|_| default_port.into());
-            let mut command = ServiceCommand::uv(vec![
-                "run".into(),
+            let mut command = ServiceCommand::uv_run(vec![
                 "--project".into(),
                 cloud.display().to_string(),
                 "uvicorn".into(),

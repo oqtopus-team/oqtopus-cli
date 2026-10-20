@@ -111,7 +111,7 @@ fn process_services_start_and_stop_without_fallback() {
             &["backend", "start", "core"][..],
             &["backend", "stop", "core"][..],
             None,
-            "run --project <RELEASE> python -m oqtopus_engine_core.app -c <WORK>/config/core/config.yaml -l <WORK>/config/core/logging.yaml",
+            "run --no-sync --project <RELEASE> python -m oqtopus_engine_core.app -c <WORK>/config/core/config.yaml -l <WORK>/config/core/logging.yaml",
         ),
         (
             EnvironmentTemplate::CloudLocal,
@@ -120,7 +120,7 @@ fn process_services_start_and_stop_without_fallback() {
             &["cloud-local", "start", "user"],
             &["cloud-local", "stop", "user"],
             Some("logs/user"),
-            "run --project <RELEASE> uvicorn oqtopus_cloud.user.lambda_function:app --host 0.0.0.0 --port 8080 --reload --log-level debug",
+            "run --no-sync --project <RELEASE> uvicorn oqtopus_cloud.user.lambda_function:app --host 0.0.0.0 --port 8080 --reload --log-level debug",
         ),
         (
             EnvironmentTemplate::CloudLocal,
@@ -129,7 +129,7 @@ fn process_services_start_and_stop_without_fallback() {
             &["cloud-local", "start", "worker", "ignored"],
             &["cloud-local", "stop", "worker"],
             Some("logs/worker"),
-            "run --project <RELEASE> python <RELEASE>/backend/oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py",
+            "run --no-sync --project <RELEASE> python <RELEASE>/backend/oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py",
         ),
         (
             EnvironmentTemplate::Manager,
@@ -138,7 +138,7 @@ fn process_services_start_and_stop_without_fallback() {
             &["manager", "start"],
             &["manager", "stop"],
             None,
-            "run --project <RELEASE> python -m oqtopus_manager.main -c <WORK>/config/config.yaml -l <WORK>/config/logging.yaml",
+            "run --no-sync --project <RELEASE> python -m oqtopus_manager.main -c <WORK>/config/config.yaml -l <WORK>/config/logging.yaml",
         ),
     ] {
         let context = TestContext::new();
