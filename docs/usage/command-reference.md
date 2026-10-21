@@ -85,6 +85,9 @@ oqtopus cloud-local status
 The `db` service is managed via Docker Compose. All other services are managed
 as local processes with PID files.
 
+Python services and the `db` migration, seeding, and storage initialization
+commands use `uv run --no-sync`, reusing the environment prepared at install time.
+
 `start all` starts services in the order: `db`, `worker`, `user_signup`,
 `admin`, `provider`, `user`. `stop all` uses the reverse order.
 

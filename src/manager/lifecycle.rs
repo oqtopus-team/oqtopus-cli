@@ -86,8 +86,7 @@ fn manager_command(environment: &Environment) -> Result<ServiceCommand, String> 
             project.display()
         ));
     }
-    Ok(ServiceCommand::uv(vec![
-        "run".into(),
+    Ok(ServiceCommand::uv_run(vec![
         "--project".into(),
         project.display().to_string(),
         "python".into(),

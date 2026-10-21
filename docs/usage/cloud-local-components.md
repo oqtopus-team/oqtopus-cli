@@ -110,6 +110,15 @@ oqtopus cloud-local uninstall cloud v1.6.0
 
 Removes the selected local release directory from the installation root.
 
+## How Python Environments Are Managed
+
+Install and update build the cloud environment once with
+`uv sync --frozen --no-dev --project <target_dir>`. Starting a service runs
+`uv run --no-sync`, so nothing is installed or changed at start time. If a
+service fails to start because its environment is missing or outdated,
+uninstall that version and install it again. `install` and `update` reuse an
+existing installation of the same version without synchronizing it again.
+
 ## Configuration Files
 
 `install`, `update`, and `uninstall` do not modify files under `config/`.

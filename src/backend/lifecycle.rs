@@ -156,8 +156,7 @@ fn backend_command(
             project.display()
         ));
     }
-    Ok(ServiceCommand::uv(vec![
-        "run".into(),
+    Ok(ServiceCommand::uv_run(vec![
         "--project".into(),
         project.display().to_string(),
         "python".into(),

@@ -135,8 +135,7 @@ fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<Servic
     }
     let command = match service {
         "worker" => {
-            let mut command = ServiceCommand::uv(vec![
-                "run".into(),
+            let mut command = ServiceCommand::uv_run(vec![
                 "--project".into(),
                 cloud.display().to_string(),
                 "python".into(),
@@ -180,8 +179,7 @@ fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<Servic
                 ),
             };
             let port = env::var(port_var).unwrap_or_else(|_| default_port.into());
-            let mut command = ServiceCommand::uv(vec![
-                "run".into(),
+            let mut command = ServiceCommand::uv_run(vec![
                 "--project".into(),
                 cloud.display().to_string(),
                 "uvicorn".into(),
@@ -312,7 +310,7 @@ fn start_database<W: Write, E: Write>(
     let init = cloud.join("backend/storage/init_storage.py");
     if init.is_file() {
         let status = Command::new("uv")
-            .args(["run", "--project"])
+            .args(["run", "--no-sync", "--project"])
             .arg(&cloud)
             .arg("python")
             .arg(&init)
@@ -404,7 +402,7 @@ fn retry_uv<E: Write>(
 ) -> Result<(), String> {
     for attempt in 1..=5 {
         let status = Command::new("uv")
-            .args(["run", "--project"])
+            .args(["run", "--no-sync", "--project"])
             .arg(project)
             .args(args)
             .current_dir(cwd)

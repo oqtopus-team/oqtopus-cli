@@ -96,6 +96,25 @@ Backend and cloud-local components are synchronized and launched with `uv`.
 
 Install `uv` before installing or starting components.
 
+## Service Fails To Start Because The Python Environment Is Missing
+
+Services are started with `uv run --no-sync`, so the environment built at
+install time is used as is. If it is missing or outdated (for example, a
+component installed by an older CLI), uninstall that version and install it
+again. `install` and `update` reuse an existing installation of the same
+version without synchronizing it again.
+
+```bash
+oqtopus backend uninstall <engine|tranqu|gateway> <version>
+oqtopus backend install <engine|tranqu|gateway> <version>
+
+oqtopus cloud-local uninstall cloud <version>
+oqtopus cloud-local install cloud <version>
+
+oqtopus manager uninstall <version>
+oqtopus manager install <version>
+```
+
 ## Branch Name Not Found (Backend)
 
 If the specified branch does not exist in the remote repository, resolving it
