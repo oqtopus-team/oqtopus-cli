@@ -369,8 +369,9 @@ fn cloud_local_database_start_runs_setup_sequence() {
     let cloud = context
         .root()
         .join("xdg-data/oqtopus/cloud-local/releases/cloud-v1.2.3");
-    fs::create_dir_all(cloud.join("backend")).expect("create cloud backend fixture");
+    fs::create_dir_all(cloud.join("backend/storage")).expect("create cloud backend fixture");
     fs::write(cloud.join("backend/compose.yaml"), "services: {}\n").expect("write compose fixture");
+    fs::write(cloud.join("backend/storage/init_storage.py"), "").expect("write storage fixture");
     context.write_executable(
         "docker",
         b"#!/bin/sh\nset -eu\ncase \"$*\" in\n  *\"ps --status running --quiet db\"*) exit 0 ;;\n  *\"exec -T db mysql\"*) exit 0 ;;\n  *) printf 'docker %s\\n' \"$*\" ;;\nesac\n",
@@ -389,6 +390,24 @@ fn cloud_local_database_start_runs_setup_sequence() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout.clone()).expect("UTF-8 output");
+    let uv_commands: Vec<_> = stdout
+        .lines()
+        .filter(|line| line.starts_with("uv "))
+        .collect();
+    let prefix = format!("uv run --no-sync --project {}", cloud.display());
+    assert_eq!(
+        uv_commands,
+        [
+            format!("{prefix} alembic upgrade head"),
+            format!("{prefix} python scripts/seed.py"),
+            format!(
+                "{prefix} python {}",
+                cloud.join("backend/storage/init_storage.py").display()
+            ),
+        ],
+        "all database setup commands must use the installed environment without syncing"
+    );
     insta::assert_snapshot!("cloud_local_database_start", context.render_output(&output));
 }
 

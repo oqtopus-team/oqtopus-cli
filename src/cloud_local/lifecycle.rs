@@ -310,7 +310,7 @@ fn start_database<W: Write, E: Write>(
     let init = cloud.join("backend/storage/init_storage.py");
     if init.is_file() {
         let status = Command::new("uv")
-            .args(["run", "--project"])
+            .args(["run", "--no-sync", "--project"])
             .arg(&cloud)
             .arg("python")
             .arg(&init)
@@ -402,7 +402,7 @@ fn retry_uv<E: Write>(
 ) -> Result<(), String> {
     for attempt in 1..=5 {
         let status = Command::new("uv")
-            .args(["run", "--project"])
+            .args(["run", "--no-sync", "--project"])
             .arg(project)
             .args(args)
             .current_dir(cwd)
