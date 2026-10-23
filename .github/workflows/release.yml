@@ -17,7 +17,23 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Blocks the release on a RustSec advisory against Cargo.lock. An advisory reviewed as not
+  # affecting oqtopus goes into .cargo/audit.toml with its reason, before the tag is pushed.
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit dependencies
+        run: cargo audit
+
   build:
+    needs: audit
     strategy:
       fail-fast: false
       matrix:
