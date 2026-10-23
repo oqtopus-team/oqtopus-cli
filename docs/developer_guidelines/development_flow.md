@@ -113,6 +113,10 @@ version or modify the manifest.
 2. Run `cargo check` to update the package entry in `Cargo.lock`, then run
    `cargo test --locked --features test-hooks` and
    `cargo clippy --all-targets --locked --features test-hooks`.
+   Also run `cargo audit`; the release workflow refuses to build while it reports a
+   vulnerability. Update the affected crate, or, if review shows oqtopus is not
+   affected, add the advisory ID to `ignore` in `.cargo/audit.toml` with the reason
+   and the condition for removing it.
 3. Include both `Cargo.toml` and `Cargo.lock` in the release preparation commit
    and merge the reviewed change into `main`.
 4. Create and push the matching tag (for example, `v1.2.3`) on that commit.
@@ -125,5 +129,5 @@ A tag containing a hyphen (for example, `v2.0.0-beta.1`) is published as a
 GitHub prerelease. `scripts/install.sh` only picks plain `vX.Y.Z` tags as the
 default version, so a prerelease is installed only when requested explicitly.
 
-A workflow dispatch can rehearse the build and smoke tests from a branch;
+A workflow dispatch can rehearse the audit, build, and smoke tests from a branch;
 publishing remains restricted to tags.
