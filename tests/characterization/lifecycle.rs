@@ -143,8 +143,7 @@ fn process_services_start_and_stop_without_fallback() {
     ] {
         let context = TestContext::new();
         context.create_environment(template, &[binding]);
-        fs::create_dir_all(context.root().join("xdg-data/oqtopus").join(release))
-            .expect("create release fixture");
+        context.create_installed_project(release);
         if let Some(directory) = log_dir {
             fs::create_dir_all(context.work_dir().join(directory)).expect("create log fixture");
         }
@@ -331,8 +330,7 @@ fn restart_starts_absent_process_services_without_fallback() {
     ] {
         let context = TestContext::new();
         context.create_environment(template, &[binding]);
-        fs::create_dir_all(context.root().join("xdg-data/oqtopus").join(release))
-            .expect("create release fixture");
+        context.create_installed_project(release);
         if let Some(directory) = log_dir {
             fs::create_dir_all(context.work_dir().join(directory)).expect("create log fixture");
         }
@@ -359,16 +357,17 @@ fn restart_starts_absent_process_services_without_fallback() {
     }
 }
 
-#[test]
-fn cloud_local_database_start_runs_setup_sequence() {
+/// A cloud-local environment with an installed `cloud` release that can bring up the database.
+///
+/// `docker` reports the container as stopped and immediately ready; `docker` and `uv` both echo
+/// their arguments to stdout so the setup sequence is visible in the output.
+fn database_context() -> (TestContext, std::path::PathBuf) {
     let context = TestContext::new();
     context.create_environment(
         EnvironmentTemplate::CloudLocal,
         &[("cloud_local_cloud_version", "v1.2.3")],
     );
-    let cloud = context
-        .root()
-        .join("xdg-data/oqtopus/cloud-local/releases/cloud-v1.2.3");
+    let cloud = context.create_installed_project("cloud-local/releases/cloud-v1.2.3");
     fs::create_dir_all(cloud.join("backend/storage")).expect("create cloud backend fixture");
     fs::write(cloud.join("backend/compose.yaml"), "services: {}\n").expect("write compose fixture");
     fs::write(cloud.join("backend/storage/init_storage.py"), "").expect("write storage fixture");
@@ -377,12 +376,31 @@ fn cloud_local_database_start_runs_setup_sequence() {
         b"#!/bin/sh\nset -eu\ncase \"$*\" in\n  *\"ps --status running --quiet db\"*) exit 0 ;;\n  *\"exec -T db mysql\"*) exit 0 ;;\n  *) printf 'docker %s\\n' \"$*\" ;;\nesac\n",
     );
     context.write_executable("uv", b"#!/bin/sh\nset -eu\nprintf 'uv %s\\n' \"$*\"\n");
+    (context, cloud)
+}
 
-    let output = context
+fn start_database(context: &TestContext) -> std::process::Output {
+    context
         .rust_command(["cloud-local", "start", "db"])
         .env("OQTOPUS_TEST_DB_PORT_READY", "1")
         .output()
-        .expect("start cloud-local database");
+        .expect("start cloud-local database")
+}
+
+fn uv_lines(output: &std::process::Output) -> Vec<String> {
+    String::from_utf8(output.stdout.clone())
+        .expect("UTF-8 output")
+        .lines()
+        .filter(|line| line.starts_with("uv "))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn cloud_local_database_start_runs_setup_sequence() {
+    let (context, cloud) = database_context();
+
+    let output = start_database(&context);
 
     assert!(
         output.status.success(),
@@ -390,14 +408,9 @@ fn cloud_local_database_start_runs_setup_sequence() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stderr.is_empty());
-    let stdout = String::from_utf8(output.stdout.clone()).expect("UTF-8 output");
-    let uv_commands: Vec<_> = stdout
-        .lines()
-        .filter(|line| line.starts_with("uv "))
-        .collect();
     let prefix = format!("uv run --no-sync --project {}", cloud.display());
     assert_eq!(
-        uv_commands,
+        uv_lines(&output),
         [
             format!("{prefix} alembic upgrade head"),
             format!("{prefix} python scripts/seed.py"),
@@ -409,6 +422,126 @@ fn cloud_local_database_start_runs_setup_sequence() {
         "all database setup commands must use the installed environment without syncing"
     );
     insta::assert_snapshot!("cloud_local_database_start", context.render_output(&output));
+}
+
+#[test]
+fn cloud_local_database_start_skips_absent_storage_initialization() {
+    let (context, cloud) = database_context();
+    fs::remove_file(cloud.join("backend/storage/init_storage.py")).expect("remove storage fixture");
+
+    let output = start_database(&context);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let prefix = format!("uv run --no-sync --project {}", cloud.display());
+    assert_eq!(
+        uv_lines(&output),
+        [
+            format!("{prefix} alembic upgrade head"),
+            format!("{prefix} python scripts/seed.py"),
+        ]
+    );
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
+    assert!(stdout.ends_with("Started db\n"), "{stdout}");
+}
+
+#[test]
+fn cloud_local_database_start_requires_installed_environment() {
+    let (context, cloud) = database_context();
+    fs::remove_dir(cloud.join(".venv")).expect("remove environment fixture");
+
+    let output = start_database(&context);
+
+    assert_eq!(output.status.code(), Some(1));
+    // Rejected before any container starts or `uv` runs.
+    assert!(
+        output.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(
+        String::from_utf8(output.stderr).expect("UTF-8 output"),
+        format!(
+            "Error: cannot start 'db': Python environment not found: {}. Install the component again to recreate it.\n",
+            cloud.join(".venv").display()
+        )
+    );
+    assert!(!cloud.join(".venv").exists());
+}
+
+#[test]
+fn process_services_require_installed_environment() {
+    for (template, binding, release, args, prefix) in [
+        (
+            EnvironmentTemplate::Backend,
+            ("engine_version", "v1.2.3"),
+            "backend/releases/engine-v1.2.3/core",
+            &["backend", "start", "core"][..],
+            "cannot start 'core'. ",
+        ),
+        (
+            EnvironmentTemplate::CloudLocal,
+            ("cloud_local_cloud_version", "v1.2.3"),
+            "cloud-local/releases/cloud-v1.2.3",
+            &["cloud-local", "start", "worker"],
+            "cannot start 'worker': ",
+        ),
+        (
+            EnvironmentTemplate::CloudLocal,
+            ("cloud_local_cloud_version", "v1.2.3"),
+            "cloud-local/releases/cloud-v1.2.3",
+            &["cloud-local", "start", "user"],
+            "cannot start 'user': ",
+        ),
+        (
+            EnvironmentTemplate::Manager,
+            ("manager_version", "v1.2.3"),
+            "manager/releases/manager-v1.2.3",
+            &["manager", "start"],
+            "cannot start manager. ",
+        ),
+    ] {
+        let context = TestContext::new();
+        context.create_environment(template, &[binding]);
+        let project = context.root().join("xdg-data/oqtopus").join(release);
+        fs::create_dir_all(&project).expect("create release fixture without environment");
+        let invoked = context.root().join("uv-invoked");
+        context.write_executable(
+            "uv",
+            format!("#!/bin/sh\ntouch '{}'\n", invoked.display()).as_bytes(),
+        );
+
+        let output = context.rust_command(args).output().expect("start service");
+
+        assert_eq!(output.status.code(), Some(1), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        assert_eq!(
+            String::from_utf8(output.stderr).expect("UTF-8 output"),
+            format!(
+                "Error: {prefix}Python environment not found: {}. Install the component again to recreate it.\n",
+                project.join(".venv").display()
+            ),
+            "{args:?}"
+        );
+        // `uv run --no-sync` would have created an empty `.venv`, making the release look installed.
+        assert!(!invoked.exists(), "{args:?}: uv must not run");
+        assert!(!project.join(".venv").exists(), "{args:?}");
+        let service = if args[0] == "manager" {
+            "manager"
+        } else {
+            args[2]
+        };
+        assert!(
+            !context
+                .work_dir()
+                .join(format!("pids/{service}.pid"))
+                .exists(),
+            "{args:?}"
+        );
+    }
 }
 
 #[test]
@@ -438,8 +571,7 @@ fn foreground_services_propagate_exit_status_and_clean_pid() {
     ] {
         let context = TestContext::new();
         context.create_environment(template, &[binding]);
-        fs::create_dir_all(context.root().join("xdg-data/oqtopus").join(release))
-            .expect("create release fixture");
+        context.create_installed_project(release);
         context.write_executable("uv", b"#!/bin/sh\nexit 7\n");
 
         let output = context

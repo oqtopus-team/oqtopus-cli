@@ -13,8 +13,8 @@ use crate::environment::{Environment, NamedEnvironment, validate_named_environme
 use crate::lifecycle::{LifecycleKind, LifecycleOutcome, line, result_code, success, usage};
 use crate::metadata::metadata_get;
 use crate::service::{
-    BackgroundOutput, ServiceCommand, StopStyle, ensure_command, load_env_exports, start_process,
-    stop_process,
+    BackgroundOutput, ServiceCommand, StopStyle, ensure_command, ensure_project_environment,
+    load_env_exports, start_process, stop_process, uv_run_command,
 };
 use crate::text::write_error;
 
@@ -133,6 +133,8 @@ fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<Servic
             cloud.display()
         ));
     }
+    ensure_project_environment(&cloud)
+        .map_err(|error| format!("cannot start '{service}': {error}"))?;
     let command = match service {
         "worker" => {
             let mut command = ServiceCommand::uv_run(vec![
@@ -239,6 +241,8 @@ fn start_database<W: Write, E: Write>(
             cloud.join("backend").display()
         ));
     }
+    // Checked before any container starts: migrations and seeding need the environment.
+    ensure_project_environment(&cloud).map_err(|error| format!("cannot start 'db': {error}"))?;
     if database_running(&environment.name, &compose) {
         line(out, "db is already running; skipping container startup.")?;
     } else {
@@ -309,13 +313,10 @@ fn start_database<W: Write, E: Write>(
     )?;
     let init = cloud.join("backend/storage/init_storage.py");
     if init.is_file() {
-        let status = Command::new("uv")
-            .args(["run", "--no-sync", "--project"])
-            .arg(&cloud)
+        let status = uv_run_command(&cloud)
             .arg("python")
             .arg(&init)
             .current_dir(&environment.environment.root)
-            .env_remove("VIRTUAL_ENV")
             .envs(&exports)
             .status();
         if !status.is_ok_and(|status| status.success()) {
@@ -401,12 +402,9 @@ fn retry_uv<E: Write>(
     err: &mut E,
 ) -> Result<(), String> {
     for attempt in 1..=5 {
-        let status = Command::new("uv")
-            .args(["run", "--no-sync", "--project"])
-            .arg(project)
+        let status = uv_run_command(project)
             .args(args)
             .current_dir(cwd)
-            .env_remove("VIRTUAL_ENV")
             .envs(exports)
             .status();
         if status.is_ok_and(|status| status.success()) {

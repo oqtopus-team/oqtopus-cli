@@ -38,10 +38,12 @@ and `mitigator` subprojects. `sse_engine` uses the installed `core` project.
 
 Install and update build each uv environment once with
 `uv sync --frozen --no-dev --project <dir>`. Starting a service runs
-`uv run --no-sync`, so nothing is installed or changed at start time. If a
-service fails to start because its environment is missing or outdated,
-uninstall that version and install it again. `install` and `update` reuse an
-existing installation of the same version without synchronizing it again.
+`uv run --no-sync`, so nothing is installed or changed at start time.
+If the environment (`.venv`) is missing, `start` fails with
+`Python environment not found` before running anything; installing the same
+version again rebuilds it. If the environment is outdated, uninstall that
+version and install it again: `install` and `update` reuse a complete
+installation of the same version without synchronizing it again.
 
 ## List Available Versions
 

@@ -52,11 +52,46 @@ pub(crate) struct ServiceCommand {
     pub(crate) config_env: bool,
 }
 
+/// `uv` arguments shared by every command that runs code from an installed component.
+///
+/// Environments are synchronized only by install and update, so starting a service or running a
+/// setup step never installs or changes packages.
+const UV_RUN: [&str; 2] = ["run", "--no-sync"];
+
+/// Ensures `project` has the virtual environment that install and update create.
+///
+/// `uv run --no-sync` does not fail when the environment is missing: it creates an empty `.venv`
+/// and runs anyway, so the command would fail later on an import error. The empty environment
+/// would also satisfy install's completeness check, which would then reuse the broken
+/// installation instead of replacing it. Call this before any [`UV_RUN`] command for `project`.
+pub(crate) fn ensure_project_environment(project: &Path) -> Result<(), String> {
+    let environment = project.join(".venv");
+    if environment.is_dir() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Python environment not found: {}. Install the component again to recreate it.",
+            environment.display()
+        ))
+    }
+}
+
+/// A one-shot `uv run --no-sync --project <project>` step run directly by the CLI.
+pub(crate) fn uv_run_command(project: &Path) -> Command {
+    let mut command = Command::new("uv");
+    command
+        .args(UV_RUN)
+        .arg("--project")
+        .arg(project)
+        // Only silences uv's mismatch warning; uv uses the project environment regardless.
+        .env_remove("VIRTUAL_ENV");
+    command
+}
+
 impl ServiceCommand {
-    /// `uv run --no-sync` with `args`. Environments are synchronized only by
-    /// install and update, so starting a service never installs or changes packages.
+    /// `uv run --no-sync` with `args`.
     pub(crate) fn uv_run(args: Vec<String>) -> Self {
-        let mut command = vec!["run".into(), "--no-sync".into()];
+        let mut command: Vec<String> = UV_RUN.iter().map(|&arg| arg.into()).collect();
         command.extend(args);
         Self {
             program: "uv",

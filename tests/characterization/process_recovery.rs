@@ -208,12 +208,7 @@ fn manager_context() -> TestContext {
         EnvironmentTemplate::Manager,
         &[("manager_version", "v1.2.3")],
     );
-    fs::create_dir_all(
-        context
-            .root()
-            .join("xdg-data/oqtopus/manager/releases/manager-v1.2.3"),
-    )
-    .expect("create manager release fixture");
+    context.create_installed_project("manager/releases/manager-v1.2.3");
     context
 }
 

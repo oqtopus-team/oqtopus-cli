@@ -6,7 +6,10 @@ use crate::args::is_help;
 use crate::environment::{Environment, validate_environment};
 use crate::lifecycle::{LifecycleKind, LifecycleOutcome, result_code, success, usage};
 use crate::metadata::metadata_get;
-use crate::service::{BackgroundOutput, ServiceCommand, StopStyle, start_process, stop_process};
+use crate::service::{
+    BackgroundOutput, ServiceCommand, StopStyle, ensure_project_environment, start_process,
+    stop_process,
+};
 
 pub(crate) fn manager_start<W: Write>(
     args: &[String],
@@ -86,6 +89,8 @@ fn manager_command(environment: &Environment) -> Result<ServiceCommand, String> 
             project.display()
         ));
     }
+    ensure_project_environment(&project)
+        .map_err(|error| format!("cannot start manager. {error}"))?;
     Ok(ServiceCommand::uv_run(vec![
         "--project".into(),
         project.display().to_string(),
