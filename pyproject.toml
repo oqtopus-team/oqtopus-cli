@@ -1,11 +1,11 @@
 [dependency-groups]
 docs = [
   "mkdocs<2.0", # Stay on 1.x to maintain plugin compatibility
-  "mkdocs-glightbox>=0.5.2",
+  "mkdocs-glightbox>=0.5.3",
   "mkdocs-literate-nav>=0.6.3",
   "mkdocs-macros-plugin>=1.5.0",
-  "mkdocs-material>=9.7.6",
-  "pymarkdownlnt>=0.9.37",
+  "mkdocs-material>=9.8.0",
+  "pymarkdownlnt>=0.9.41",
   "pymdown-extensions>=10.21.3",
 ]
 
