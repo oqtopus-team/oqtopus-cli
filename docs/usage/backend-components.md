@@ -34,6 +34,17 @@ The `engine` repository is a monorepo. During `engine` installation, OQTOPUS
 CLI synchronizes the uv environments for the `core`, `combiner`, `estimator`,
 and `mitigator` subprojects. `sse_engine` uses the installed `core` project.
 
+## How Python Environments Are Managed
+
+Install and update build each uv environment once with
+`uv sync --frozen --no-dev --project <dir>`. Starting a service runs
+`uv run --no-sync`, so nothing is installed or changed at start time.
+If the environment (`.venv`) is missing, `start` fails with
+`Python environment not found` before running anything; installing the same
+version again rebuilds it. If the environment is outdated, uninstall that
+version and install it again: `install` and `update` reuse a complete
+installation of the same version without synchronizing it again.
+
 ## List Available Versions
 
 ```bash

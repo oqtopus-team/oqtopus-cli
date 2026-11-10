@@ -190,6 +190,16 @@ impl TestContext {
         );
     }
 
+    /// Creates an installed Python project under the shared install root and returns its path.
+    ///
+    /// It includes the `.venv` that install creates: services run with `uv run --no-sync` and
+    /// refuse to start without it.
+    pub fn create_installed_project(&self, relative: impl AsRef<Path>) -> PathBuf {
+        let project = self.root.join("xdg-data/oqtopus").join(relative);
+        fs::create_dir_all(project.join(".venv")).expect("create installed project fixture");
+        project
+    }
+
     pub fn install_fake_docker(&self) {
         self.write_executable(
             "docker",

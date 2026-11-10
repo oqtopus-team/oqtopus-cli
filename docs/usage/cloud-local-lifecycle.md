@@ -55,6 +55,10 @@ become ready, applies Alembic migrations (`alembic upgrade head`), seeds the
 database (`scripts/seed.py`), and, if present, runs `storage/init_storage.py`
 from the installed `cloud` component.
 
+Migrations, database seeding, and storage initialization all use
+`uv run --no-sync` with the environment prepared by `install` or `update`.
+Starting services does not synchronize Python dependencies or install dev dependencies.
+
 For other services, the process is started in the background and its PID
 is written to `$ENV_ROOT/pids/<service>.pid`.
 
