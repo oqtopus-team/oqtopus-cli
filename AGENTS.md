@@ -31,6 +31,7 @@ src/                     Rust crate (binary `oqtopus`, edition 2024)
   text.rs                rendering of final results and errors
 tests/characterization/  snapshot + behavior suite against the built binary
 tests/cli.rs             Rust-only behavior that has no Bash-era counterpart
+tests/installer.rs       scripts/install.sh against fake curl/uname and fixtures
 design/                  authoritative design records (read before large changes)
 templates/<template>/    files copied into a user environment by `oqtopus init`
 docs/                    MkDocs sources; docs/usage/command-reference.md is user-facing truth
@@ -158,13 +159,3 @@ errors, and externally observable results.
   `MD013`, `MD041`, `MD046`, and `MD060` are disabled (see `pyproject.toml`).
 - Fenced code blocks carry an explicit language; Mermaid renders via
   `pymdownx.superfences`.
-
-## Known gaps
-
-Do not treat these as intentional; they are tracked work.
-
-- `scripts/install.sh` still downloads the Bash-era source archive and extracts
-  `bin/oqtopus`, which no longer exists. It must be rewritten against the release
-  binaries before the migration branch merges into `main`.
-- `README.md` and `docs/developer_guidelines/setup.md` still describe a Bash CLI
-  and a Python-only development setup.

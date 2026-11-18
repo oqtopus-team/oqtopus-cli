@@ -14,14 +14,36 @@ By default, the installer places `oqtopus` in:
 
 Make sure this directory is on your `PATH`.
 
-## Install A Specific Version
+The installer requires `curl` and `tar`. Installing v2 or later also requires
+`sha256sum` or `shasum` to verify the download.
 
-```bash
-curl -LsSf https://raw.githubusercontent.com/oqtopus-team/oqtopus-cli/main/scripts/install.sh | sh -s -- --version v1.0.0
-```
+## Choosing A Version
 
 If `--version` is omitted, the installer resolves the latest stable `vX.Y.Z`
-release.
+release. Prereleases such as `v2.0.0-beta.1` are installed only when requested
+explicitly:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/oqtopus-team/oqtopus-cli/main/scripts/install.sh | sh -s -- --version v2.0.0-beta.1
+```
+
+How the installer obtains the CLI depends on the major version:
+
+| Version     | What the installer installs                                                            |
+| ----------- | -------------------------------------------------------------------------------------- |
+| v1          | The shell-script CLI, extracted from the tagged source archive                         |
+| v2 or later | The prebuilt binary for your platform, verified against the release's `SHA256SUMS` file |
+
+Until v2.0.0 is released, the latest stable release is a v1 release, so the
+default installation is still the shell-script CLI. Request a v2 prerelease
+with `--version` to try the new CLI. See
+[Migrating From v1](./migrating-from-v1.md) before upgrading an existing
+installation.
+
+Running the installer again replaces the installed `oqtopus` with the requested
+version. To roll back, install an earlier version with `--version`.
+If the destination named `oqtopus` is a directory, the installer exits with an
+error.
 
 ## Install To A Custom Directory
 
@@ -42,7 +64,15 @@ See [Shell Completion](./shell-completion.md) for manual setup.
 
 ## Supported Platforms
 
-OQTOPUS CLI currently supports Linux and macOS.
+OQTOPUS CLI v2 publishes prebuilt binaries for:
+
+| Platform | Architectures                                    |
+| -------- | ------------------------------------------------ |
+| Linux    | `x86_64`, `aarch64` (statically linked, any libc) |
+| macOS    | Apple silicon (`arm64`)                           |
+
+Intel-based macOS is not supported by v2. v1 runs on Linux and macOS on any
+architecture where its tool dependencies are available.
 
 Windows is not supported.
 

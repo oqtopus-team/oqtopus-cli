@@ -37,8 +37,8 @@ With OQTOPUS CLI, users can:
   component installations;
 - prepare runtime directories such as logs and PID files for local execution.
 
-Currently, the CLI targets Linux and macOS local workflows. Windows is not
-supported. A future Rust implementation is planned separately.
+The CLI is a single self-contained executable for Linux and macOS local
+workflows. Windows is not supported.
 
 ## Usage
 
@@ -46,6 +46,9 @@ If you are using OQTOPUS CLI for the first time, start here:
 
 1. [Installation](./usage/installation.md)
 2. [Quick Start](./usage/quick-start.md)
+
+Upgrading from the v1 shell-script CLI? See
+[Migrating From v1](./usage/migrating-from-v1.md).
 
 **Cloud-local environment:**
 

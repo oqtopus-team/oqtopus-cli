@@ -54,7 +54,8 @@ expand_path() {
       printf '%s\n' "$HOME"
       ;;
     "~/"*)
-      printf '%s/%s\n' "$HOME" "${1#~/}"
+      # Quoted so the pattern stays a literal "~/" instead of tilde-expanding to $HOME.
+      printf '%s/%s\n' "$HOME" "${1#"~/"}"
       ;;
     *)
       printf '%s\n' "$1"
@@ -169,6 +170,40 @@ resolve_latest_version() {
   latest_version_from_tags "$tags" || die "could not resolve the latest stable version from GitHub tags."
 }
 
+# v1 releases ship the CLI as a shell script inside the source archive; every
+# later release publishes prebuilt binaries instead.
+is_legacy_version() {
+  case "$1" in
+    v1.*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prepare_install_target() {
+  mkdir -p "$BIN_DIR" || die "failed to create target directory: $BIN_DIR"
+  [ -d "$BIN_DIR" ] || die "target path is not a directory: $BIN_DIR"
+  [ -w "$BIN_DIR" ] || die "target directory is not writable: $BIN_DIR"
+
+  target_bin="$BIN_DIR/oqtopus"
+  [ ! -d "$target_bin" ] || die "target executable path is a directory: $target_bin"
+  target_tmp="$target_bin.tmp.$$"
+}
+
+# Renaming the staged file over the target replaces it even while an older
+# oqtopus is running, where writing into the running executable would fail on
+# Linux (or corrupt a running v1 script).
+commit_install_target() {
+  if ! chmod +x "$target_tmp" || ! mv -f "$target_tmp" "$target_bin"; then
+    rm -f "$target_tmp" || true
+    die "failed to install oqtopus to $target_bin."
+  fi
+  printf '%s\n' "$target_bin"
+}
+
 download_archive() {
   archive_url="https://github.com/$REPO_OWNER/$REPO_NAME/archive/refs/tags/$VERSION.tar.gz"
   archive_path="$TMP_DIR/oqtopus-cli-$VERSION.tar.gz"
@@ -197,33 +232,132 @@ extract_archive() {
   printf '%s\n' "$source_bin"
 }
 
-install_binary() {
+install_legacy_script() {
   source_bin=$1
-  BIN_DIR=$(expand_path "$BIN_DIR")
+  prepare_install_target
 
-  mkdir -p "$BIN_DIR" || die "failed to create target directory: $BIN_DIR"
-  [ -d "$BIN_DIR" ] || die "target path is not a directory: $BIN_DIR"
-  [ -w "$BIN_DIR" ] || die "target directory is not writable: $BIN_DIR"
+  if ! sed "s|^CLI_VERSION=.*|CLI_VERSION=\"\${OQTOPUS_CLI_VERSION:-$VERSION}\"|" "$source_bin" > "$target_tmp"; then
+    warn "could not embed installed version into $target_bin"
+    if ! cp "$source_bin" "$target_tmp"; then
+      rm -f "$target_tmp" || true
+      die "failed to install oqtopus to $target_bin."
+    fi
+  fi
 
-  target_bin="$BIN_DIR/oqtopus"
+  commit_install_target
+}
 
-  if ! cp "$source_bin" "$target_bin"; then
+install_legacy() {
+  archive_path=$(download_archive)
+  source_bin=$(extract_archive "$archive_path")
+  install_legacy_script "$source_bin"
+}
+
+# Prints the Rust target triple of the release archive that runs on this machine.
+release_target() {
+  os=$(uname -s)
+  arch=$(uname -m)
+
+  case "$os" in
+    Linux)
+      # The Linux binaries are statically linked against musl, so they run on any libc.
+      case "$arch" in
+        x86_64|amd64)
+          printf '%s\n' "x86_64-unknown-linux-musl"
+          ;;
+        aarch64|arm64)
+          printf '%s\n' "aarch64-unknown-linux-musl"
+          ;;
+        *)
+          return 1
+          ;;
+      esac
+      ;;
+    Darwin)
+      # A shell running under Rosetta reports x86_64 on Apple silicon, where the
+      # arm64 binary still runs natively.
+      if [ "$arch" = "x86_64" ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" = "1" ]; then
+        arch=arm64
+      fi
+      case "$arch" in
+        arm64|aarch64)
+          printf '%s\n' "aarch64-apple-darwin"
+          ;;
+        *)
+          return 1
+          ;;
+      esac
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    digest=$(sha256sum "$1") || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    digest=$(shasum -a 256 "$1") || return 1
+  else
+    return 1
+  fi
+  printf '%s\n' "${digest%% *}"
+}
+
+release_asset_url() {
+  printf 'https://github.com/%s/%s/releases/download/%s/%s\n' "$REPO_OWNER" "$REPO_NAME" "$VERSION" "$1"
+}
+
+download_release_asset() {
+  asset=$1
+  destination=$2
+
+  if ! curl -fsSL "$(release_asset_url "$asset")" -o "$destination"; then
+    die "failed to download $asset for version '$VERSION'. Check that the release exists and provides this platform."
+  fi
+}
+
+verify_release_archive() {
+  archive_path=$1
+  archive_name=$2
+  sums_path=$3
+
+  # SHA256SUMS lists "<digest>  <file>", or "<digest> *<file>" in binary mode.
+  expected=$(awk -v name="$archive_name" '$2 == name || $2 == "*" name { print $1; exit }' "$sums_path")
+  [ -n "$expected" ] || die "SHA256SUMS for version '$VERSION' has no entry for $archive_name."
+
+  actual=$(sha256_of "$archive_path") || die "failed to compute the SHA-256 digest of $archive_name."
+  [ "$actual" = "$expected" ] || die "checksum mismatch for $archive_name."
+}
+
+install_release_binary() {
+  target=$(release_target) || die "no prebuilt binary is published for $(uname -s) $(uname -m)."
+  package="oqtopus-$VERSION-$target"
+  archive_name="$package.tar.gz"
+  archive_path="$TMP_DIR/$archive_name"
+  sums_path="$TMP_DIR/SHA256SUMS"
+  extract_dir="$TMP_DIR/extract"
+
+  progress "Installing OQTOPUS CLI $VERSION ($target)..."
+  download_release_asset "$archive_name" "$archive_path"
+  download_release_asset "SHA256SUMS" "$sums_path"
+  verify_release_archive "$archive_path" "$archive_name" "$sums_path"
+
+  mkdir -p "$extract_dir" || die "failed to create temporary extraction directory."
+  if ! tar -xzf "$archive_path" -C "$extract_dir"; then
+    die "failed to extract $archive_name."
+  fi
+  source_bin="$extract_dir/$package/oqtopus"
+  [ -f "$source_bin" ] || die "$package/oqtopus was not found in $archive_name."
+
+  prepare_install_target
+  if ! cp "$source_bin" "$target_tmp"; then
+    rm -f "$target_tmp" || true
     die "failed to install oqtopus to $target_bin."
   fi
 
-  target_tmp="$target_bin.tmp.$$"
-  if sed "s|^CLI_VERSION=.*|CLI_VERSION=\"\${OQTOPUS_CLI_VERSION:-$VERSION}\"|" "$target_bin" > "$target_tmp"; then
-    mv "$target_tmp" "$target_bin"
-  else
-    rm -f "$target_tmp" || true
-    warn "could not embed installed version into $target_bin"
-  fi
-
-  if ! chmod +x "$target_bin"; then
-    die "failed to mark $target_bin as executable."
-  fi
-
-  printf '%s\n' "$target_bin"
+  commit_install_target
 }
 
 path_contains_bin_dir() {
@@ -285,6 +419,7 @@ install_completions() {
 
 main() {
   parse_args "$@"
+  BIN_DIR=$(expand_path "$BIN_DIR")
 
   case "$(uname -s 2>/dev/null || printf unknown)" in
     Linux|Darwin)
@@ -312,9 +447,14 @@ main() {
     VERSION=$(resolve_latest_version)
   fi
 
-  archive_path=$(download_archive)
-  source_bin=$(extract_archive "$archive_path")
-  installed_bin=$(install_binary "$source_bin")
+  if is_legacy_version "$VERSION"; then
+    installed_bin=$(install_legacy)
+  else
+    if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+      die "'sha256sum' or 'shasum' is required to verify the download."
+    fi
+    installed_bin=$(install_release_binary)
+  fi
 
   log "Installed oqtopus $VERSION"
   log "Binary: $installed_bin"

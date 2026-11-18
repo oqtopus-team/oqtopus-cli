@@ -7,6 +7,7 @@ nav:
   - Home: index.md
   - Usage:
       - Installation: usage/installation.md
+      - Migrating From v1: usage/migrating-from-v1.md
       - Quick Start: usage/quick-start.md
       - Cloud-Local:
           - Cloud-Local Environment: usage/cloud-local-environment.md

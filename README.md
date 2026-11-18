@@ -47,8 +47,31 @@ oqtopus manager status
 oqtopus manager stop
 ```
 
-OQTOPUS CLI currently focuses on Linux and macOS local workflows.
-A future Rust implementation is planned separately.
+OQTOPUS CLI is a single self-contained executable for Linux and macOS local
+workflows.
+
+## Installation
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/oqtopus-team/oqtopus-cli/main/scripts/install.sh | sh
+```
+
+See [Installation](https://oqtopus-cli.readthedocs.io/en/latest/usage/installation/)
+for version selection, supported platforms, and
+[Migrating From v1](https://oqtopus-cli.readthedocs.io/en/latest/usage/migrating-from-v1/)
+for upgrading from the shell-script CLI.
+
+## Development
+
+The CLI is written in Rust. Build and test it with Cargo:
+
+```bash
+cargo build
+make test
+```
+
+See [Setup Development Environment](https://oqtopus-cli.readthedocs.io/en/latest/developer_guidelines/setup/)
+for details.
 
 ## Documentation
 

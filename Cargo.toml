@@ -31,6 +31,10 @@ path = "tests/characterization/main.rs"
 name = "cli"
 path = "tests/cli.rs"
 
+[[test]]
+name = "installer"
+path = "tests/installer.rs"
+
 [dev-dependencies]
 base64 = "0.23"
 insta = "1"
