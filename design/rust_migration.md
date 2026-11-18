@@ -420,15 +420,23 @@ and rollback, then merge into `main`. Packaging is therefore not a prerequisite
 for retiring the fallback, but it is a prerequisite for the merge, so `main`
 never lacks an installable CLI.
 
+## Installation and rollback
+
+`release.yml` publishes one archive per supported target and a `SHA256SUMS`
+file. `scripts/install.sh` installs the archive for the user's platform after
+verifying its digest, and keeps the executable named `oqtopus` in the chosen
+directory, because the Manager resolves it from `PATH` by name.
+
+The installer selects the installation method by the requested tag: v1 tags
+are installed from their source archive as the shell-script CLI, and every
+later tag from the release binaries. Without `--version` it installs the
+latest stable `vX.Y.Z` tag, so the default stays on v1 until v2.0.0 is
+released and switches without an installer change. Rollback is reinstalling
+an earlier tag with `--version`. The v1 path is removed once v1 no longer
+needs to be installable.
+
 ## Open migration decisions
 
-- How the native executable is packaged, installed, and rolled back now that
-  the fallback is retired and before the merge into `main`. Packaging must
-  keep an `oqtopus` executable on `PATH`, because the Manager resolves it by
-  name. `scripts/install.sh` still fetches the Bash-era source archive and
-  extracts `bin/oqtopus` from it, which no longer exists; it must be rewritten
-  against the platform release binaries `release.yml` now builds and
-  publishes.
 - When structured (`--json`) output is introduced, and whether the
   human-readable output is frozen, kept as-is, or allowed to change at that
   point.

@@ -128,6 +128,11 @@ version or modify the manifest.
 A tag containing a hyphen (for example, `v2.0.0-beta.1`) is published as a
 GitHub prerelease. `scripts/install.sh` only picks plain `vX.Y.Z` tags as the
 default version, so a prerelease is installed only when requested explicitly.
+The installer downloads the release archive for the user's platform and the
+`SHA256SUMS` file published by this workflow, so asset names must keep the
+`oqtopus-<tag>-<target>.tar.gz` form, with the executable at
+`oqtopus-<tag>-<target>/oqtopus` inside. Tags of v1 releases are installed
+from their source archive instead.
 
 A workflow dispatch can rehearse the audit, build, and smoke tests from a branch;
 publishing remains restricted to tags.
