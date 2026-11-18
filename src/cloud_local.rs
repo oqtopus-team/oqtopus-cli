@@ -1,4 +1,4 @@
-//! Native read-only cloud-local commands.
+//! Cloud-local command modules, service inventory, and read-only results.
 
 mod components;
 mod lifecycle;
@@ -9,28 +9,49 @@ pub(crate) use lifecycle::{cloud_local_restart, cloud_local_start, cloud_local_s
 pub(crate) use operations::{cloud_local_install, cloud_local_uninstall, cloud_local_update};
 pub(crate) use versions::cloud_local_versions;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::environment::{Environment, NamedEnvironment, validate_named_environment};
 use crate::metadata::metadata_get;
-use crate::service::{ServiceStatus, running_pid};
+use crate::service::{
+    ServiceStatus, ensure_project_environment, load_env_exports, running_pid, uv_run_command,
+};
 
 pub(crate) struct CloudLocalInfo {
     pub(crate) metadata: String,
 }
 
 pub(crate) struct CloudLocalStatus {
-    pub(crate) database_containers: Option<Vec<String>>,
+    pub(crate) database: DatabaseStatus,
     pub(crate) services: Vec<ServiceStatus>,
+}
+
+/// The combined state of the database and object storage services behind the `db` row.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum DatabaseStatus {
+    /// Every service reported by `oqtopus-cloud-infra status` is running, in reported order.
+    Running(Vec<String>),
+    /// Only some reported services are running; each keeps its reported state and order.
+    PartiallyRunning(Vec<DatabaseService>),
+    /// Nothing is running, or the state cannot be determined.
+    Stopped,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct DatabaseService {
+    pub(crate) name: String,
+    pub(crate) running: bool,
 }
 
 /// Every cloud-local service, in the order the Manager consumes. Startup and shutdown order are
 /// separate policies and are named where they differ.
 const SERVICES: [&str; 6] = ["db", "worker", "user_signup", "admin", "provider", "user"];
 
-/// The database runs as Docker Compose containers instead of a PID-backed process, so status,
-/// start, and stop all treat it separately from the rest of the inventory.
+/// The database and object storage run as Docker Compose containers managed by
+/// `oqtopus-cloud-infra` instead of a PID-backed process, so status, start, and stop all treat
+/// them separately from the rest of the inventory.
 const DATABASE: &str = "db";
 
 pub(crate) fn cloud_local_info(args: &[String]) -> Result<CloudLocalInfo, String> {
@@ -49,7 +70,7 @@ pub(crate) fn cloud_local_status(args: &[String]) -> Result<CloudLocalStatus, St
     }
 
     let environment = validate_named_environment("cloud-local")?;
-    let database_containers = database_containers(&environment);
+    let database = database_status(&environment);
     let root = &environment.environment.root;
     let services = SERVICES
         .iter()
@@ -61,10 +82,7 @@ pub(crate) fn cloud_local_status(args: &[String]) -> Result<CloudLocalStatus, St
         })
         .collect();
 
-    Ok(CloudLocalStatus {
-        database_containers,
-        services,
-    })
+    Ok(CloudLocalStatus { database, services })
 }
 
 /// Locates the installed cloud component named by the environment's binding.
@@ -80,57 +98,169 @@ fn cloud_directory(environment: &Environment) -> Option<PathBuf> {
     }
 }
 
-fn database_containers(environment: &NamedEnvironment) -> Option<Vec<String>> {
-    let project = environment.name.as_str();
-    let compose = cloud_directory(&environment.environment)?.join("backend/compose.yaml");
-    if !compose.is_file() || !database_is_running(project, &compose) {
-        return None;
+/// Asks `oqtopus-cloud-infra status` which database and storage services are running.
+///
+/// Any failure to obtain an answer (no installed cloud, a missing `.venv`, a release without the
+/// command, a missing `uv`, or an exit status other than 0 or 3) is reported as stopped, so
+/// `status` always prints every row the Manager expects.
+fn database_status(environment: &NamedEnvironment) -> DatabaseStatus {
+    let Ok(mut command) = infra_command(environment, "status") else {
+        return DatabaseStatus::Stopped;
+    };
+    let output = command.stdin(Stdio::null()).stderr(Stdio::null()).output();
+    let Ok(output) = output else {
+        return DatabaseStatus::Stopped;
+    };
+    // The command follows LSB init-script conventions: 0 when every service is running and 3
+    // when some or all are stopped. Any other status means the state is unknown.
+    if !matches!(output.status.code(), Some(0 | 3)) {
+        return DatabaseStatus::Stopped;
     }
-
-    Some(
-        ["db", "minio", "mc"]
-            .into_iter()
-            .filter_map(|service| container_name(project, service))
-            .collect(),
-    )
+    let Ok(stdout) = String::from_utf8(output.stdout) else {
+        return DatabaseStatus::Stopped;
+    };
+    classify_database(stdout.lines().filter_map(parse_infra_status_line).collect())
 }
 
-fn database_is_running(project: &str, compose: &Path) -> bool {
-    Command::new("docker")
-        .args(["compose", "--project-name", project, "-f"])
-        .arg(compose)
-        .args(["ps", "--status", "running", "--quiet", "db"])
-        .stderr(Stdio::null())
-        .output()
-        .is_ok_and(|output| {
-            // `--quiet` prints one container ID per running match and nothing at all otherwise, so
-            // any byte other than a line terminator means the database is up.
-            output.status.success() && output.stdout.iter().any(|byte| *byte != b'\n')
-        })
+/// Constructs an infra invocation shared by start, stop, and status.
+///
+/// The compose project is always the environment name, even if config/.env overrides it.
+/// A missing Python environment must be detected before uv can create an empty one.
+fn infra_command(environment: &NamedEnvironment, action: &str) -> Result<Command, String> {
+    let cloud = require_cloud_directory(&environment.environment, DATABASE, action)?;
+    ensure_project_environment(&cloud).map_err(|error| format!("cannot {action} 'db': {error}"))?;
+    require_cloud_entry(&cloud, "oqtopus-cloud-infra", "db", action)?;
+    let backend = cloud.join("backend");
+    if !backend.is_dir() {
+        return Err(format!(
+            "cannot {action} 'db': backend directory not found: {}",
+            backend.display()
+        ));
+    }
+    let mut command = uv_run_command(&cloud);
+    command
+        .args(["oqtopus-cloud-infra", action])
+        .current_dir(backend)
+        .envs(load_env_exports(
+            &environment.environment.root.join("config/.env"),
+        ))
+        // Removed again after config/.env, which could set it; this only avoids uv's warning.
+        .env_remove("VIRTUAL_ENV")
+        .env("COMPOSE_PROJECT_NAME", &environment.name);
+    Ok(command)
 }
 
-fn container_name(project: &str, service: &str) -> Option<String> {
-    let output = Command::new("docker")
-        .args([
-            "ps",
-            "-a",
-            "--filter",
-            &format!("label=com.docker.compose.project={project}"),
-            "--filter",
-            &format!("label=com.docker.compose.service={service}"),
-            "--format",
-            "{{.Names}}",
-        ])
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
+/// Like [`cloud_directory`], but reports a missing binding as an error for `action` on `service`.
+fn require_cloud_directory(
+    environment: &Environment,
+    service: &str,
+    action: &str,
+) -> Result<PathBuf, String> {
+    cloud_directory(environment)
+        .ok_or_else(|| format!("cannot {action} '{service}': cloud component is not installed."))
+}
+
+/// Requires the cloud entry points introduced in v1.8.0.
+fn require_cloud_entry(
+    cloud: &Path,
+    entry: &str,
+    service: &str,
+    action: &str,
+) -> Result<(), String> {
+    if fs::read_to_string(cloud.join("pyproject.toml"))
+        .is_ok_and(|pyproject| pyproject.contains(entry))
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "cannot {action} '{service}': the installed cloud component does not provide {entry}. Update it with 'oqtopus cloud-local update cloud'."
+        ))
+    }
+}
+
+/// Parses one `<service>: running|stopped` row. Any other line, such as a diagnostic, is skipped.
+fn parse_infra_status_line(line: &str) -> Option<DatabaseService> {
+    let (name, state) = line.split_once(':')?;
+    let running = match state.trim_start() {
+        "running" => true,
+        "stopped" => false,
+        _ => return None,
+    };
+    (!name.is_empty()).then(|| DatabaseService {
+        name: name.to_owned(),
+        running,
+    })
+}
+
+fn classify_database(services: Vec<DatabaseService>) -> DatabaseStatus {
+    if services.is_empty() || services.iter().all(|service| !service.running) {
+        DatabaseStatus::Stopped
+    } else if services.iter().all(|service| service.running) {
+        DatabaseStatus::Running(services.into_iter().map(|service| service.name).collect())
+    } else {
+        DatabaseStatus::PartiallyRunning(services)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(output: &str) -> DatabaseStatus {
+        classify_database(output.lines().filter_map(parse_infra_status_line).collect())
     }
 
-    // Compose derives container names from the project and service names, so a reply this command
-    // cannot decode does not name a container it can report on.
-    let name = String::from_utf8(output.stdout).ok()?;
-    let name = name.lines().next()?;
-    (!name.is_empty()).then(|| name.to_owned())
+    #[test]
+    fn every_running_service_is_named_in_reported_order() {
+        assert_eq!(
+            parse("db: running\nseaweedfs: running\n"),
+            DatabaseStatus::Running(vec!["db".into(), "seaweedfs".into()])
+        );
+    }
+
+    #[test]
+    fn a_mix_keeps_each_reported_state() {
+        assert_eq!(
+            parse("db: running\nseaweedfs: stopped\n"),
+            DatabaseStatus::PartiallyRunning(vec![
+                DatabaseService {
+                    name: "db".into(),
+                    running: true
+                },
+                DatabaseService {
+                    name: "seaweedfs".into(),
+                    running: false
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn nothing_running_or_nothing_reported_is_stopped() {
+        assert_eq!(
+            parse("db: stopped\nminio: stopped\n"),
+            DatabaseStatus::Stopped
+        );
+        assert_eq!(parse(""), DatabaseStatus::Stopped);
+    }
+
+    #[test]
+    fn lines_that_are_not_service_rows_are_ignored() {
+        for line in [
+            "Starting compose project",
+            ": running",
+            "db: Running",
+            "db: running (healthy)",
+            "db: exited",
+        ] {
+            assert_eq!(parse_infra_status_line(line), None, "{line:?}");
+        }
+        assert_eq!(
+            parse_infra_status_line("db:running"),
+            Some(DatabaseService {
+                name: "db".into(),
+                running: true
+            })
+        );
+    }
 }

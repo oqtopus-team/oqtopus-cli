@@ -6,7 +6,7 @@
 use std::io::{self, Write};
 
 use crate::backend::{BackendDeviceStatus, BackendInfo, BackendStatus};
-use crate::cloud_local::{CloudLocalInfo, CloudLocalStatus};
+use crate::cloud_local::{CloudLocalInfo, CloudLocalStatus, DatabaseStatus};
 use crate::completion::{CompletionOutcome, CompletionOutput};
 use crate::init::{InitOutcome, InitOutput};
 use crate::lifecycle::{LifecycleKind, LifecycleOutcome, LifecycleOutput};
@@ -182,10 +182,23 @@ pub(crate) fn write_cloud_local_status(
     out: &mut impl Write,
     status: &CloudLocalStatus,
 ) -> io::Result<()> {
-    if let Some(containers) = &status.database_containers {
-        writeln!(out, "db: Running ({})", containers.join(", "))?;
-    } else {
-        writeln!(out, "db: Stopped")?;
+    match &status.database {
+        DatabaseStatus::Running(names) => writeln!(out, "db: Running ({})", names.join(", "))?,
+        DatabaseStatus::PartiallyRunning(services) => {
+            let details: Vec<_> = services
+                .iter()
+                .map(|service| {
+                    let state = if service.running {
+                        "running"
+                    } else {
+                        "stopped"
+                    };
+                    format!("{}: {state}", service.name)
+                })
+                .collect();
+            writeln!(out, "db: Partially running ({})", details.join(", "))?;
+        }
+        DatabaseStatus::Stopped => writeln!(out, "db: Stopped")?,
     }
     for service in &status.services {
         write_process_status(out, service)?;

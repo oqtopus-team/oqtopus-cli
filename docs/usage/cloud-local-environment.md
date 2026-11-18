@@ -71,13 +71,14 @@ check that the current directory matches the `environment_root` recorded in `.me
 
 ## `config/`
 
-`config/.env` contains environment variables used when launching cloud-local
-processes. These variables are applied only to the launched process environment;
-they are not written to your global shell environment.
+`config/.env` supplies settings to the cloud-local processes and the
+database and storage command. These settings are scoped to the launched
+commands. The template sets database connection settings, API ports, and
+logging levels. `STORAGE_STACK` defaults to `seaweedfs` and can be set to
+`minio`.
 
-Default values include database connection settings, API ports, MinIO storage
-configuration, and logging levels. Edit this file to customize the local
-environment.
+See [Cloud-Local Configuration](./cloud-local-configuration.md) for all
+settings and instructions for updating an existing environment.
 
 ## `logs/`
 
@@ -89,8 +90,7 @@ terminal instead.
 
 ## `pids/`
 
-`pids/` stores PID files for process-managed services (`worker`, `user_signup`,
-`admin`, `provider`, `user`).
-
-The `db` service is managed by Docker Compose and does not use a PID file.
-Its status is checked via `docker compose ps`.
+`pids/` stores PID files for the process services `worker`, `user_signup`,
+`admin`, `provider`, and `user`. `oqtopus-cloud-infra` manages MySQL and object
+storage for the `db` service and reports their status. See
+[Cloud-Local Lifecycle](./cloud-local-lifecycle.md) for the possible `db` states.

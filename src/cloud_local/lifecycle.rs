@@ -1,24 +1,16 @@
 //! Cloud-local service lifecycle commands.
 
-use std::env;
-use std::io::Write;
-use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration;
-
 use crate::args::{is_help, single_target, validate_member};
-use crate::environment::{Environment, NamedEnvironment, validate_named_environment};
+use crate::environment::{NamedEnvironment, validate_named_environment};
 use crate::lifecycle::{LifecycleKind, LifecycleOutcome, line, result_code, success, usage};
-use crate::metadata::metadata_get;
 use crate::service::{
     BackgroundOutput, ServiceCommand, StopStyle, ensure_command, ensure_project_environment,
-    load_env_exports, start_process, stop_process, uv_run_command,
+    start_process, stop_process,
 };
 use crate::text::write_error;
+use std::io::Write;
 
-use super::{DATABASE, SERVICES};
+use super::{DATABASE, SERVICES, infra_command, require_cloud_directory, require_cloud_entry};
 
 // Startup follows the same domain inventory used by status. Shutdown reverses dependencies.
 const STOP_ORDER: [&str; 6] = ["user", "provider", "admin", "user_signup", "worker", "db"];
@@ -26,7 +18,7 @@ const STOP_ORDER: [&str; 6] = ["user", "provider", "admin", "user_signup", "work
 pub(crate) fn cloud_local_start<W: Write, E: Write>(
     args: &[String],
     out: &mut W,
-    err: &mut E,
+    _err: &mut E,
 ) -> Result<LifecycleOutcome, String> {
     if is_help(args) {
         return Ok(usage(LifecycleKind::CloudLocalStart, 0));
@@ -42,10 +34,10 @@ pub(crate) fn cloud_local_start<W: Write, E: Write>(
             return Err("--foreground is not supported for 'all'.".into());
         }
         for service in SERVICES {
-            start_cloud_service(&environment, service, false, out, err)?;
+            start_cloud_service(&environment, service, false, out)?;
         }
     } else {
-        let code = start_cloud_service(&environment, target, foreground, out, err)?;
+        let code = start_cloud_service(&environment, target, foreground, out)?;
         return Ok(result_code(code));
     }
     Ok(success())
@@ -89,26 +81,25 @@ pub(crate) fn cloud_local_restart<W: Write, E: Write>(
             return Ok(result_code(1));
         }
         for service in SERVICES {
-            start_cloud_service(&environment, service, false, out, err)?;
+            start_cloud_service(&environment, service, false, out)?;
         }
     } else {
         validate_member(target, &SERVICES)?;
         stop_cloud_service(&environment, target, out)?;
-        start_cloud_service(&environment, target, false, out, err)?;
+        start_cloud_service(&environment, target, false, out)?;
     }
     Ok(success())
 }
 
-fn start_cloud_service<W: Write, E: Write>(
+fn start_cloud_service<W: Write>(
     environment: &NamedEnvironment,
     service: &str,
     foreground: bool,
     out: &mut W,
-    err: &mut E,
 ) -> Result<i32, String> {
     validate_member(service, &SERVICES)?;
     if service == DATABASE {
-        return start_database(environment, out, err).map(|()| 0);
+        return run_database(environment, "start", out).map(|()| 0);
     }
     let log = environment
         .environment
@@ -126,7 +117,7 @@ fn start_cloud_service<W: Write, E: Write>(
 }
 
 fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<ServiceCommand, String> {
-    let cloud = cloud_directory(&environment.environment, service, "start")?;
+    let cloud = require_cloud_directory(&environment.environment, service, "start")?;
     if !cloud.is_dir() {
         return Err(format!(
             "cannot start '{service}': cloud directory not found: {}",
@@ -135,195 +126,41 @@ fn cloud_command(environment: &NamedEnvironment, service: &str) -> Result<Servic
     }
     ensure_project_environment(&cloud)
         .map_err(|error| format!("cannot start '{service}': {error}"))?;
-    let command = match service {
-        "worker" => {
-            let mut command = ServiceCommand::uv_run(vec![
-                "--project".into(),
-                cloud.display().to_string(),
-                "python".into(),
-                cloud
-                    .join("backend/oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py")
-                    .display()
-                    .to_string(),
-            ])
-            .with_config_env();
-            command.environment = vec![
-                ("POWERTOOLS_METRICS_NAMESPACE", "pending-jobs-updater"),
-                ("POWERTOOLS_SERVICE_NAME", "pending-jobs-updater"),
-            ];
-            command
-        }
-        "user" | "provider" | "admin" | "user_signup" => {
-            let (namespace, module, port_var, default_port) = match service {
-                "user" => (
-                    "user-api",
-                    "oqtopus_cloud.user.lambda_function:app",
-                    "USER_API_PORT",
-                    "8080",
-                ),
-                "provider" => (
-                    "provider-api",
-                    "oqtopus_cloud.provider.lambda_function:app",
-                    "PROVIDER_API_PORT",
-                    "8888",
-                ),
-                "admin" => (
-                    "admin-api",
-                    "oqtopus_cloud.admin.lambda_function:app",
-                    "ADMIN_API_PORT",
-                    "8889",
-                ),
-                _ => (
-                    "user_signup-api",
-                    "oqtopus_cloud.user_signup.lambda_function:app",
-                    "USER_SIGNUP_API_PORT",
-                    "8890",
-                ),
-            };
-            let port = env::var(port_var).unwrap_or_else(|_| default_port.into());
-            let mut command = ServiceCommand::uv_run(vec![
-                "--project".into(),
-                cloud.display().to_string(),
-                "uvicorn".into(),
-                module.into(),
-                "--host".into(),
-                "0.0.0.0".into(),
-                "--port".into(),
-                port,
-                "--reload".into(),
-                "--log-level".into(),
-                "debug".into(),
-            ])
-            .with_config_env();
-            command.environment = vec![
-                ("POWERTOOLS_METRICS_NAMESPACE", namespace),
-                ("POWERTOOLS_SERVICE_NAME", namespace),
-            ];
-            command
-        }
+    let entry = match service {
+        "user" => "oqtopus-cloud-user-api",
+        "provider" => "oqtopus-cloud-provider-api",
+        "admin" => "oqtopus-cloud-admin-api",
+        "user_signup" => "oqtopus-cloud-user-signup-api",
+        "worker" => "oqtopus-cloud-worker",
         _ => return Err(format!("unknown service: {service}")),
     };
-    Ok(command)
+    require_cloud_entry(&cloud, entry, service, "start")?;
+    Ok(ServiceCommand::uv_run(vec![
+        "--project".into(),
+        cloud.display().to_string(),
+        entry.into(),
+    ])
+    .with_config_env())
 }
 
-/// Waits up to about 30 seconds for `address` to accept a TCP connection.
-fn wait_for_port(address: SocketAddrV4) -> bool {
-    // The characterization suite cannot open loopback sockets in every sandbox. As with the
-    // HTTP fixture hooks, this explicit test hook bypasses only the wait; subsequent setup still
-    // executes through the same commands and paths as production.
-    #[cfg(feature = "test-hooks")]
-    if crate::test_hooks::db_port_ready() {
-        return true;
-    }
-    for attempt in 0..30 {
-        if TcpStream::connect_timeout(&address.into(), Duration::from_millis(200)).is_ok() {
-            return true;
-        }
-        if attempt < 29 {
-            thread::sleep(Duration::from_secs(1));
-        }
-    }
-    false
-}
-
-fn start_database<W: Write, E: Write>(
+/// Delegates database and storage lifecycle, including readiness and setup, to the cloud.
+fn run_database<W: Write>(
     environment: &NamedEnvironment,
+    action: &str,
     out: &mut W,
-    err: &mut E,
 ) -> Result<(), String> {
     ensure_command("docker")?;
     ensure_command("uv")?;
-    let cloud = cloud_directory(&environment.environment, "db", "start")?;
-    let compose = cloud.join("backend/compose.yaml");
-    if !compose.is_file() {
-        return Err(format!(
-            "cannot start 'db': compose.yaml not found in {}",
-            cloud.join("backend").display()
-        ));
+    let mut command = infra_command(environment, action)?;
+    let (before, after) = match action {
+        "start" => ("Starting db", "Started db"),
+        _ => ("Stopping db", "Stopped db"),
+    };
+    line(out, before)?;
+    if !command.status().is_ok_and(|status| status.success()) {
+        return Err(format!("failed to {action} db."));
     }
-    // Checked before any container starts: migrations and seeding need the environment.
-    ensure_project_environment(&cloud).map_err(|error| format!("cannot start 'db': {error}"))?;
-    if database_running(&environment.name, &compose) {
-        line(out, "db is already running; skipping container startup.")?;
-    } else {
-        line(out, "Starting db")?;
-        if !docker_compose(&environment.name, &compose)
-            .args(["up", "-d", "db", "minio", "mc"])
-            .status()
-            .is_ok_and(|status| status.success())
-        {
-            return Err("failed to start db with docker compose.".into());
-        }
-    }
-    line(out, "Waiting for db to be ready")?;
-    let mut ready = false;
-    for attempt in 0..60 {
-        let status = docker_compose(&environment.name, &compose)
-            .args([
-                "exec",
-                "-T",
-                "db",
-                "mysql",
-                "-h127.0.0.1",
-                "--protocol=tcp",
-                "-uadmin",
-                "-ppassword",
-                "main",
-                "-e",
-                "SELECT 1",
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        if status.is_ok_and(|status| status.success()) {
-            ready = true;
-            break;
-        }
-        if attempt < 59 {
-            thread::sleep(Duration::from_secs(2));
-        }
-    }
-    if !ready {
-        return Err("timed out waiting for db to become ready.".into());
-    }
-    line(out, "Waiting for db port to be reachable from the host")?;
-    if !wait_for_port(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3306)) {
-        return Err(
-            "timed out waiting for db port 127.0.0.1:3306 to be reachable from the host.".into(),
-        );
-    }
-    line(out, "db ready, applying migrations")?;
-    let exports = load_env_exports(&environment.environment.root.join("config/.env"));
-    retry_uv(
-        &cloud,
-        &cloud.join("backend"),
-        &["alembic", "upgrade", "head"],
-        &exports,
-        "alembic upgrade head",
-        err,
-    )?;
-    line(out, "Seeding db")?;
-    retry_uv(
-        &cloud,
-        &cloud.join("backend"),
-        &["python", "scripts/seed.py"],
-        &exports,
-        "scripts/seed.py",
-        err,
-    )?;
-    let init = cloud.join("backend/storage/init_storage.py");
-    if init.is_file() {
-        let status = uv_run_command(&cloud)
-            .arg("python")
-            .arg(&init)
-            .current_dir(&environment.environment.root)
-            .envs(&exports)
-            .status();
-        if !status.is_ok_and(|status| status.success()) {
-            return Err("failed to run storage/init_storage.py.".into());
-        }
-    }
-    line(out, "Started db")
+    line(out, after)
 }
 
 fn stop_cloud_service<W: Write>(
@@ -339,90 +176,7 @@ fn stop_cloud_service<W: Write>(
             out,
         );
     }
-    ensure_command("docker")?;
-    let cloud = cloud_directory(&environment.environment, "db", "stop")?;
-    let compose = cloud.join("backend/compose.yaml");
-    if !compose.is_file() {
-        return Err(format!(
-            "cannot stop 'db': compose.yaml not found in {}",
-            cloud.join("backend").display()
-        ));
-    }
-    line(out, "Stopping db")?;
-    if !docker_compose(&environment.name, &compose)
-        .arg("down")
-        .status()
-        .is_ok_and(|status| status.success())
-    {
-        return Err("failed to stop db with docker compose.".into());
-    }
-    line(out, "Stopped db")
-}
-
-fn cloud_directory(
-    environment: &Environment,
-    service: &str,
-    operation: &str,
-) -> Result<PathBuf, String> {
-    let metadata = environment.metadata.as_str();
-    let version = metadata_get(metadata, "cloud_local_cloud_version").ok_or_else(|| {
-        format!("cannot {operation} '{service}': cloud component is not installed.")
-    })?;
-    Ok(if version.starts_with("branch:") {
-        environment.root.join("cloud")
-    } else {
-        environment.install_root.join(format!("cloud-{version}"))
-    })
-}
-
-fn database_running(project: &str, compose: &Path) -> bool {
-    docker_compose(project, compose)
-        .args(["ps", "--status", "running", "--quiet", "db"])
-        .stderr(Stdio::null())
-        .output()
-        .is_ok_and(|output| {
-            output.status.success() && output.stdout.iter().any(|byte| *byte != b'\n')
-        })
-}
-
-fn docker_compose(project: &str, compose: &Path) -> Command {
-    let mut command = Command::new("docker");
-    command
-        .args(["compose", "--project-name", project, "-f"])
-        .arg(compose);
-    command
-}
-
-fn retry_uv<E: Write>(
-    project: &Path,
-    cwd: &Path,
-    args: &[&str],
-    exports: &std::collections::HashMap<String, String>,
-    label: &str,
-    err: &mut E,
-) -> Result<(), String> {
-    for attempt in 1..=5 {
-        let status = uv_run_command(project)
-            .args(args)
-            .current_dir(cwd)
-            .envs(exports)
-            .status();
-        if status.is_ok_and(|status| status.success()) {
-            return Ok(());
-        }
-        if attempt < 5 {
-            writeln!(
-                err,
-                "Warning: {label} failed; retrying ({}/5) in 2s...",
-                attempt + 1
-            )
-            .map_err(|error| format!("failed to write warning: {error}"))?;
-            err.flush()
-                .map_err(|error| format!("failed to write warning: {error}"))?;
-            thread::sleep(Duration::from_secs(2));
-        }
-    }
-    Err(format!("failed to run {label}."))
+    run_database(environment, "stop", out)
 }
 
 fn stop_many_named<W: Write, E: Write>(

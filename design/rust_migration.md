@@ -224,6 +224,29 @@ This migration workflow does not prescribe a test count, mocking strategy,
 or a fixed ratio of snapshot, integration, and unit tests. Module responsibilities
 are specified separately in the runtime architecture document.
 
+## Restored cloud-local database and storage parity
+
+`cloud-local status` derives the `db` row from `oqtopus-cloud-infra status`
+(exit 0 or 3, one `<service>: running|stopped` row per service), restoring parity
+with the Bash behavior already merged in oqtopus-cli#36. The service-name
+annotations, `Running` / `Partially running` / `Stopped` states, fallback to
+`db: Stopped` on failure, and process-service row order preserve that existing
+Manager output contract. They are not a new output-contract change.
+
+Any other outcome, including invalid UTF-8 on the infra command's stdout,
+prints `db: Stopped`, so every service row is still printed for the Manager's
+line-by-line parsing. Its stderr is discarded, and Rust closes its stdin
+rather than inheriting it. A missing `.venv` also reports stopped without
+invoking uv, which would otherwise create an empty environment.
+
+Cloud-local database start and stop also delegate to `oqtopus-cloud-infra`,
+restoring the remaining lifecycle behavior from oqtopus-cli#36. The infra command owns
+readiness checks, migrations, seeding, and storage initialization. Stop preserves
+the containers, network, and volumes rather than running `docker compose down`.
+API and worker startup uses the cloud entry points and scoped settings from
+`config/.env`. Cloud v1.8.0 or later is required; older releases without these
+commands are rejected with an update instruction.
+
 ## Decided compatibility changes
 
 - `version` prints only the version compiled into the executable and never
@@ -264,13 +287,6 @@ are specified separately in the runtime architecture document.
   `Error: failed to write device status file: <reason>` rather than the shell
   redirection error Bash emits. The exit status is unchanged, and no consumer
   parses this message.
-- `cloud-local status` keeps reporting when a container-name lookup fails.
-  Bash runs `docker ps` in a command substitution under `set -e`, so a failing
-  lookup aborts the command before any line is printed. Rust omits the
-  unreadable container from the `db: Running (...)` annotation and still prints
-  every service row, which is what the Manager's line-by-line parsing expects.
-  If multiple containers match a service, only the first name is included so
-  the annotation cannot introduce additional rows.
 - Native `versions` commands do not reproduce diagnostics emitted directly by
   a failing `curl` process. They preserve the CLI-owned error message and exit
   status; no downstream consumer parses the removed tool-specific diagnostic.

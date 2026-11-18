@@ -1,5 +1,5 @@
-//! Environment overrides that let the characterization suite replace network access, wall-clock
-//! time, and port probing with fixed fixtures.
+//! Environment overrides that let the characterization suite replace network access and
+//! wall-clock time with fixed fixtures.
 //!
 //! This module, and every call into it, is compiled only with the `test-hooks` feature, so a
 //! release binary contains no `OQTOPUS_TEST_*` handling. Even in a test build the overrides stay
@@ -51,9 +51,4 @@ fn from_manifest(manifest: OsString, url: &str) -> Result<Vec<u8>, ()> {
 /// Returns the pinned creation timestamp, so snapshots do not differ on every run.
 pub(crate) fn created_at() -> Option<String> {
     var("OQTOPUS_TEST_CREATED_AT")
-}
-
-/// Reports whether the database port wait should be skipped.
-pub(crate) fn db_port_ready() -> bool {
-    var_os("OQTOPUS_TEST_DB_PORT_READY").is_some()
 }
