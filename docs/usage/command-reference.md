@@ -90,6 +90,8 @@ Their startup options come from `config/.env`.
 
 Cloud v1.8.0 or later is required. An installed cloud without the required
 entry points is rejected by `start` and `stop db` with an update instruction.
+Stop `db` before upgrading the CLI from an environment that runs an older cloud;
+see [Upgrading From A Cloud Before v1.8.0](./cloud-local-lifecycle.md#upgrading-from-a-cloud-before-v180).
 These commands use `uv run --no-sync`, reusing the environment prepared at
 install time, and reject a missing `.venv` before running anything.
 

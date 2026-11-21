@@ -27,6 +27,32 @@ provide the required commands, update it with `oqtopus cloud-local update cloud`
 Existing environments also need the new settings in `config/.env`; see
 [Cloud-Local Configuration](./cloud-local-configuration.md).
 
+### Upgrading From A Cloud Before v1.8.0
+
+This CLI cannot manage the `db` containers of a cloud before v1.8.0. With such a
+cloud installed, `stop db` and `stop all` fail with the update instruction, and
+`status` reports `db: Stopped` even while its containers are running.
+Stop `db` before you upgrade the CLI:
+
+1. With the CLI version that started the environment, run
+   `oqtopus cloud-local stop all`.
+2. Upgrade the CLI, then run `oqtopus cloud-local update cloud` and update
+   `config/.env`.
+3. Run `oqtopus cloud-local start all`.
+
+Existing database and object storage data is not carried over. The first
+`start db` after the upgrade creates and seeds a new database. With
+`STORAGE_STACK=minio`, the existing MinIO volume is reused.
+
+If the CLI is already upgraded and the old containers are still running, stop
+them with Docker Compose. Use the old release's compose file and the
+environment name as the project name:
+
+```bash
+docker compose --project-name <env-name> \
+  -f <old-cloud-release>/backend/compose.yaml down
+```
+
 ## Start All Services
 
 ```bash
