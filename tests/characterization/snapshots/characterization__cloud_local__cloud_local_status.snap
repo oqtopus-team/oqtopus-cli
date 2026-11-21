@@ -4,7 +4,7 @@ expression: rendered
 ---
 exit: 0
 --- stdout ---
-db: Running (characterization-db-1, characterization-minio-1, characterization-mc-1)
+db: Running (db, seaweedfs)
 worker: Running (PID <PID>)
 user_signup: Stopped
 admin: Stopped

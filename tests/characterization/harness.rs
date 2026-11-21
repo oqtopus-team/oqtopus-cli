@@ -5,7 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-/// Gates the test-only HTTP fixture, port-readiness, and clock-override hooks in `src/`, so they
+/// Gates the test-only HTTP fixture and clock-override hooks in `src/`, so they
 /// stay inert outside this harness. The hooks are compiled only with the `test-hooks` feature.
 const TEST_MODE: &str = "OQTOPUS_TEST_MODE";
 

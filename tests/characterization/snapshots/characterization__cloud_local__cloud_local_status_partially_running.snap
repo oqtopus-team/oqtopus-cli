@@ -1,0 +1,14 @@
+---
+source: tests/characterization/cloud_local.rs
+expression: context.render_output(&output)
+---
+exit: 0
+--- stdout ---
+db: Partially running (db: running, seaweedfs: stopped)
+worker: Stopped
+user_signup: Stopped
+admin: Stopped
+provider: Stopped
+user: Stopped
+--- stderr ---
+--- end ---

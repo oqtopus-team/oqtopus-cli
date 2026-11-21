@@ -50,9 +50,6 @@ useful for testing in-development templates.
 `install`, `uninstall`, and `update` require `environment_name` (or the legacy
 `env_name`) in `.metadata`, as well as `install_root`.
 
-When `status` finds multiple containers for a Compose service, it reports the
-first name so each service remains on a single output line.
-
 ```bash
 oqtopus cloud-local versions <cloud|frontend|admin>
 oqtopus cloud-local install <cloud|frontend|admin> [<version>|branch:<branch>]
@@ -82,11 +79,21 @@ oqtopus cloud-local restart <db|user|provider|admin|user_signup|worker|all>
 oqtopus cloud-local status
 ```
 
-The `db` service is managed via Docker Compose. All other services are managed
-as local processes with PID files.
+The `db` service is managed through `oqtopus-cloud-infra start|stop|status`.
+The cloud command handles database and storage setup; stopping preserves
+containers, the network, and data volumes. `STORAGE_STACK` selects SeaweedFS
+(the default) or MinIO.
 
-Python services and the `db` migration, seeding, and storage initialization
-commands use `uv run --no-sync`, reusing the environment prepared at install time.
+Other services run as local processes with PID files, using
+`oqtopus-cloud-{user,provider,admin,user-signup}-api` and `oqtopus-cloud-worker`.
+Their startup options come from `config/.env`.
+
+Cloud v1.8.0 or later is required. An installed cloud without the required
+entry points is rejected by `start` and `stop db` with an update instruction.
+Stop `db` before upgrading the CLI from an environment that runs an older cloud;
+see [Upgrading From A Cloud Before v1.8.0](./cloud-local-lifecycle.md#upgrading-from-a-cloud-before-v180).
+These commands use `uv run --no-sync`, reusing the environment prepared at
+install time, and reject a missing `.venv` before running anything.
 
 `start all` starts services in the order: `db`, `worker`, `user_signup`,
 `admin`, `provider`, `user`. `stop all` uses the reverse order.
@@ -95,7 +102,11 @@ commands use `uv run --no-sync`, reusing the environment prepared at install tim
 Runtime stdout and stderr are visible in the terminal; logs are written to
 `$ENV_ROOT/logs/<service>/service.log` for background starts.
 
-`status` shows Docker container names for `db` and PIDs for other services.
+`status` shows PIDs for process services. For `db` it runs
+`oqtopus-cloud-infra status` from the installed cloud component and prints
+`db: Running (<services>)`, `db: Partially running (<service>: <state>, ...)`,
+or `db: Stopped`. `db: Stopped` also covers a cloud component without
+`oqtopus-cloud-infra`, a missing `.venv`, and any failure to determine the state.
 
 ## Cloud-Local Environment Info
 

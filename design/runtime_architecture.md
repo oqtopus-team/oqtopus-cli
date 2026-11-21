@@ -33,7 +33,7 @@ flowchart LR
     consumer["OQTOPUS Manager application"]
     cli["oqtopus: Rust CLI"]
     processes["Managed service processes"]
-    docker["Docker Compose / cloud-local database"]
+    docker["oqtopus-cloud-infra / Docker Compose<br/>cloud-local database and storage"]
     files["Environment directory<br/>.metadata, config/, pids/, logs/"]
     installed["Component installation directories"]
     remote["GitHub repositories<br/>templates, tags, archives"]
@@ -187,7 +187,7 @@ in migration decisions when they are needed to justify compatibility.
 This sequence follows [service::start_process](../src/service.rs), called by a
 domain's lifecycle module after environment validation. It covers one
 process-backed service; multi-service ordering remains in the domain. The
-cloud-local database uses Docker Compose and has a separate startup path.
+cloud-local database delegates to `oqtopus-cloud-infra` and has a separate startup path.
 Arrows represent calls, file operations, and returned outcomes over time.
 
 ```mermaid

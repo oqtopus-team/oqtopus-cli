@@ -33,9 +33,9 @@ This installs the latest stable releases of:
 oqtopus cloud-local start all
 ```
 
-The `db` service is started first via Docker Compose. The remaining services
-(`worker`, `user_signup`, `admin`, `provider`, `user`) are started as managed
-processes.
+The `db` service is started first with `oqtopus-cloud-infra start`. The
+remaining services (`worker`, `user_signup`, `admin`, `provider`, `user`) are
+started as managed processes.
 
 ### Check Cloud-Local Status
 
@@ -46,7 +46,7 @@ oqtopus cloud-local status
 Example output:
 
 ```text
-db: Running (my-cloud-db-1, my-cloud-minio-1, my-cloud-mc-1)
+db: Running (db, seaweedfs)
 worker: Running (PID 12345)
 user_signup: Running (PID 12346)
 admin: Running (PID 12347)
@@ -61,7 +61,8 @@ oqtopus cloud-local stop all
 ```
 
 Services are stopped in the reverse of the start order. `db` is stopped last
-via `docker compose down`.
+with `oqtopus-cloud-infra stop`. Containers, the network, and data volumes
+are kept.
 
 ### Cloud-Local Next Steps
 

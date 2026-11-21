@@ -1,6 +1,23 @@
 use std::fs;
+use std::path::Path;
 
 use crate::harness::{EnvironmentTemplate, TestContext};
+
+const CLOUD_ENTRIES: [(&str, &str); 5] = [
+    ("user", "oqtopus-cloud-user-api"),
+    ("provider", "oqtopus-cloud-provider-api"),
+    ("admin", "oqtopus-cloud-admin-api"),
+    ("user_signup", "oqtopus-cloud-user-signup-api"),
+    ("worker", "oqtopus-cloud-worker"),
+];
+
+fn write_cloud_entries(project: &Path) {
+    let mut scripts = String::from("[project.scripts]\noqtopus-cloud-infra = 'fixture:main'\n");
+    for (_, entry) in CLOUD_ENTRIES {
+        scripts.push_str(&format!("{entry} = 'fixture:main'\n"));
+    }
+    fs::write(project.join("pyproject.toml"), scripts).expect("write cloud entry points");
+}
 
 #[test]
 fn lifecycle_help_is_stable() {
@@ -115,21 +132,48 @@ fn process_services_start_and_stop_without_fallback() {
         ),
         (
             EnvironmentTemplate::CloudLocal,
-            ("cloud_local_cloud_version", "v1.2.3"),
-            "cloud-local/releases/cloud-v1.2.3",
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
             &["cloud-local", "start", "user"],
             &["cloud-local", "stop", "user"],
             Some("logs/user"),
-            "run --no-sync --project <RELEASE> uvicorn oqtopus_cloud.user.lambda_function:app --host 0.0.0.0 --port 8080 --reload --log-level debug",
+            "run --no-sync --project <RELEASE> oqtopus-cloud-user-api",
         ),
         (
             EnvironmentTemplate::CloudLocal,
-            ("cloud_local_cloud_version", "v1.2.3"),
-            "cloud-local/releases/cloud-v1.2.3",
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
+            &["cloud-local", "start", "provider"],
+            &["cloud-local", "stop", "provider"],
+            Some("logs/provider"),
+            "run --no-sync --project <RELEASE> oqtopus-cloud-provider-api",
+        ),
+        (
+            EnvironmentTemplate::CloudLocal,
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
+            &["cloud-local", "start", "admin"],
+            &["cloud-local", "stop", "admin"],
+            Some("logs/admin"),
+            "run --no-sync --project <RELEASE> oqtopus-cloud-admin-api",
+        ),
+        (
+            EnvironmentTemplate::CloudLocal,
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
+            &["cloud-local", "start", "user_signup"],
+            &["cloud-local", "stop", "user_signup"],
+            Some("logs/user_signup"),
+            "run --no-sync --project <RELEASE> oqtopus-cloud-user-signup-api",
+        ),
+        (
+            EnvironmentTemplate::CloudLocal,
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
             &["cloud-local", "start", "worker", "ignored"],
             &["cloud-local", "stop", "worker"],
             Some("logs/worker"),
-            "run --no-sync --project <RELEASE> python <RELEASE>/backend/oqtopus_cloud/worker/pending_jobs_updater/local_scheduler.py",
+            "run --no-sync --project <RELEASE> oqtopus-cloud-worker",
         ),
         (
             EnvironmentTemplate::Manager,
@@ -143,7 +187,10 @@ fn process_services_start_and_stop_without_fallback() {
     ] {
         let context = TestContext::new();
         context.create_environment(template, &[binding]);
-        context.create_installed_project(release);
+        let project = context.create_installed_project(release);
+        if template == EnvironmentTemplate::CloudLocal {
+            write_cloud_entries(&project);
+        }
         if let Some(directory) = log_dir {
             fs::create_dir_all(context.work_dir().join(directory)).expect("create log fixture");
         }
@@ -155,7 +202,7 @@ fn process_services_start_and_stop_without_fallback() {
         fs::create_dir_all(context.work_dir().join("config")).expect("create config fixture");
         fs::write(
             context.work_dir().join("config/.env"),
-            "FROM_DOTENV=loaded\nVIRTUAL_ENV=/from/dotenv\n",
+            "FROM_DOTENV=loaded\nVIRTUAL_ENV=/from/dotenv\nPOWERTOOLS_METRICS_NAMESPACE=custom-metrics\nPOWERTOOLS_SERVICE_NAME=custom-service\n",
         )
         .expect("write env fixture");
 
@@ -193,14 +240,9 @@ fn process_services_start_and_stop_without_fallback() {
         // `uv` must pick the project environment, whichever source names another one.
         assert_eq!(actual.lines().nth(2), Some(""), "{actual}");
         if template == EnvironmentTemplate::CloudLocal {
-            let namespace = if start_args[2] == "worker" {
-                "pending-jobs-updater"
-            } else {
-                "user-api"
-            };
             assert_eq!(
                 actual.lines().nth(1),
-                Some(format!("{namespace}|{namespace}|loaded").as_str())
+                Some("custom-metrics|custom-service|loaded")
             );
         }
 
@@ -311,8 +353,8 @@ fn restart_starts_absent_process_services_without_fallback() {
         ),
         (
             EnvironmentTemplate::CloudLocal,
-            ("cloud_local_cloud_version", "v1.2.3"),
-            "cloud-local/releases/cloud-v1.2.3",
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
             &["cloud-local", "restart", "worker"],
             &["cloud-local", "stop", "worker"],
             Some("logs/worker"),
@@ -330,7 +372,10 @@ fn restart_starts_absent_process_services_without_fallback() {
     ] {
         let context = TestContext::new();
         context.create_environment(template, &[binding]);
-        context.create_installed_project(release);
+        let project = context.create_installed_project(release);
+        if template == EnvironmentTemplate::CloudLocal {
+            write_cloud_entries(&project);
+        }
         if let Some(directory) = log_dir {
             fs::create_dir_all(context.work_dir().join(directory)).expect("create log fixture");
         }
@@ -357,119 +402,415 @@ fn restart_starts_absent_process_services_without_fallback() {
     }
 }
 
-/// A cloud-local environment with an installed `cloud` release that can bring up the database.
-///
-/// `docker` reports the container as stopped and immediately ready; `docker` and `uv` both echo
-/// their arguments to stdout so the setup sequence is visible in the output.
+/// Infra owns Compose and setup; the fixture intentionally contains no compose.yaml or scripts.
 fn database_context() -> (TestContext, std::path::PathBuf) {
     let context = TestContext::new();
     context.create_environment(
         EnvironmentTemplate::CloudLocal,
-        &[("cloud_local_cloud_version", "v1.2.3")],
+        &[("cloud_local_cloud_version", "v1.8.0")],
     );
-    let cloud = context.create_installed_project("cloud-local/releases/cloud-v1.2.3");
-    fs::create_dir_all(cloud.join("backend/storage")).expect("create cloud backend fixture");
-    fs::write(cloud.join("backend/compose.yaml"), "services: {}\n").expect("write compose fixture");
-    fs::write(cloud.join("backend/storage/init_storage.py"), "").expect("write storage fixture");
+    let cloud = context.create_installed_project("cloud-local/releases/cloud-v1.8.0");
+    fs::create_dir(cloud.join("backend")).expect("create cloud backend fixture");
+    write_cloud_entries(&cloud);
+    fs::create_dir(context.work_dir().join("config")).expect("create config fixture");
+    fs::write(
+        context.work_dir().join("config/.env"),
+        [
+            "STORAGE_STACK=seaweedfs\n",
+            "COMPOSE_PROJECT_NAME=wrong-project\n",
+            "VIRTUAL_ENV=/from/dotenv\n",
+            "DB_USERNAME=custom-user\n",
+            "DB_PASSWORD=custom-password\n",
+        ]
+        .concat(),
+    )
+    .expect("write cloud config");
     context.write_executable(
         "docker",
-        b"#!/bin/sh\nset -eu\ncase \"$*\" in\n  *\"ps --status running --quiet db\"*) exit 0 ;;\n  *\"exec -T db mysql\"*) exit 0 ;;\n  *) printf 'docker %s\\n' \"$*\" ;;\nesac\n",
+        "#!/bin/sh\necho 'unexpected docker invocation' >&2\nexit 99\n",
     );
-    context.write_executable("uv", b"#!/bin/sh\nset -eu\nprintf 'uv %s\\n' \"$*\"\n");
+    context.write_executable(
+        "uv",
+        r#"#!/bin/sh
+root=$(dirname "$0")/..
+{
+  printf 'args=%s\n' "$*"
+  printf 'cwd=%s\n' "$PWD"
+  printf 'project=%s\n' "$COMPOSE_PROJECT_NAME"
+  printf 'venv=%s\n' "${VIRTUAL_ENV-<unset>}"
+  printf 'storage=%s\n' "$STORAGE_STACK"
+  printf 'credentials=%s:%s\n' "$DB_USERNAME" "$DB_PASSWORD"
+} >> "$root/infra-invocations"
+printf 'uv %s\n' "$*"
+if [ "${INFRA_EXIT:-0}" != 0 ]; then
+  echo 'infra failed' >&2
+fi
+exit "${INFRA_EXIT:-0}"
+"#,
+    );
     (context, cloud)
 }
 
-fn start_database(context: &TestContext) -> std::process::Output {
-    context
-        .rust_command(["cloud-local", "start", "db"])
-        .env("OQTOPUS_TEST_DB_PORT_READY", "1")
-        .output()
-        .expect("start cloud-local database")
-}
-
-fn uv_lines(output: &std::process::Output) -> Vec<String> {
-    String::from_utf8(output.stdout.clone())
-        .expect("UTF-8 output")
-        .lines()
-        .filter(|line| line.starts_with("uv "))
-        .map(str::to_owned)
-        .collect()
+#[test]
+fn cloud_local_database_lifecycle_delegates_to_infra() {
+    for (action, commands) in [
+        ("start", vec!["start"]),
+        ("stop", vec!["stop"]),
+        ("restart", vec!["stop", "start"]),
+    ] {
+        let (context, cloud) = database_context();
+        let output = context
+            .rust_command(["cloud-local", action, "db"])
+            .env("VIRTUAL_ENV", "/from/caller")
+            .output()
+            .expect("run database lifecycle");
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty());
+        let invocations = fs::read_to_string(context.root().join("infra-invocations"))
+            .expect("read infra invocations");
+        // The compose project and uv environment are pinned even when config/.env names others.
+        let expected: Vec<String> = commands
+            .iter()
+            .flat_map(|command| {
+                [
+                    format!(
+                        "args=run --no-sync --project {} oqtopus-cloud-infra {command}",
+                        cloud.display()
+                    ),
+                    format!("cwd={}", cloud.join("backend").display()),
+                    "project=characterization".into(),
+                    "venv=<unset>".into(),
+                    "storage=seaweedfs".into(),
+                    "credentials=custom-user:custom-password".into(),
+                ]
+            })
+            .collect();
+        assert_eq!(invocations.lines().collect::<Vec<_>>(), expected);
+        if action == "start" {
+            insta::assert_snapshot!("cloud_local_database_start", context.render_output(&output));
+        } else {
+            let expected: Vec<String> = commands
+                .iter()
+                .flat_map(|command| {
+                    let (before, after) = match *command {
+                        "start" => ("Starting", "Started"),
+                        _ => ("Stopping", "Stopped"),
+                    };
+                    [
+                        format!("{before} db"),
+                        format!(
+                            "uv run --no-sync --project {} oqtopus-cloud-infra {command}",
+                            cloud.display()
+                        ),
+                        format!("{after} db"),
+                    ]
+                })
+                .collect();
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert_eq!(stdout.lines().collect::<Vec<_>>(), expected);
+        }
+    }
 }
 
 #[test]
-fn cloud_local_database_start_runs_setup_sequence() {
-    let (context, cloud) = database_context();
-
-    let output = start_database(&context);
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+fn cloud_local_all_preserves_lifecycle_order() {
+    let (context, _) = database_context();
+    for (service, _) in CLOUD_ENTRIES {
+        fs::create_dir_all(context.work_dir().join(format!("logs/{service}"))).unwrap();
+    }
+    context.write_executable(
+        "uv",
+        r#"#!/bin/sh
+root=$(dirname "$0")/..
+if [ "$5" = oqtopus-cloud-infra ]; then
+  printf 'infra %s\n' "$6" >> "$root/calls"
+else
+  printf '%s\n' "$5" >> "$root/calls"
+  exec sleep 60
+fi
+"#,
     );
-    assert!(output.stderr.is_empty());
-    let prefix = format!("uv run --no-sync --project {}", cloud.display());
+    let stop_rows = || {
+        let mut rows: Vec<_> = ["user", "provider", "admin", "user_signup", "worker"]
+            .iter()
+            .map(|service| {
+                let pid =
+                    fs::read_to_string(context.work_dir().join(format!("pids/{service}.pid")))
+                        .unwrap_or_default();
+                format!("Stopped {service} (PID {})", pid.trim())
+            })
+            .collect();
+        rows.extend(["Stopping db".into(), "Stopped db".into()]);
+        rows
+    };
+    let started = context.run_snapshot_subject(["cloud-local", "start", "all"]);
+    let restart_stop_rows = stop_rows();
+    let restarted = context.run_snapshot_subject(["cloud-local", "restart", "all"]);
+    let final_stop_rows = stop_rows();
+    // Stop before asserting so a failed assertion cannot leave the fixture's services running.
+    let stopped = context.run_snapshot_subject(["cloud-local", "stop", "all"]);
+    assert!(started.status.success(), "{started:?}");
+    assert!(restarted.status.success(), "{restarted:?}");
+    assert!(stopped.status.success(), "{stopped:?}");
+    assert!(started.stderr.is_empty() && restarted.stderr.is_empty() && stopped.stderr.is_empty());
+    let startup = [
+        "infra start",
+        "oqtopus-cloud-worker",
+        "oqtopus-cloud-user-signup-api",
+        "oqtopus-cloud-admin-api",
+        "oqtopus-cloud-provider-api",
+        "oqtopus-cloud-user-api",
+    ];
+    // start all, then restart all (stop + start), then the final stop all.
+    let expected_calls = [&startup[..], &["infra stop"], &startup, &["infra stop"]].concat();
     assert_eq!(
-        uv_lines(&output),
-        [
-            format!("{prefix} alembic upgrade head"),
-            format!("{prefix} python scripts/seed.py"),
+        fs::read_to_string(context.root().join("calls"))
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        expected_calls
+    );
+    assert_eq!(
+        String::from_utf8(stopped.stdout)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        final_stop_rows
+    );
+    let restart_stdout = String::from_utf8(restarted.stdout).unwrap();
+    assert_eq!(
+        restart_stdout
+            .lines()
+            .take(restart_stop_rows.len())
+            .collect::<Vec<_>>(),
+        restart_stop_rows
+    );
+    for (service, _) in CLOUD_ENTRIES {
+        assert!(
+            !context
+                .work_dir()
+                .join(format!("pids/{service}.pid"))
+                .exists()
+        );
+    }
+}
+
+#[test]
+fn cloud_local_entry_points_receive_template_and_custom_startup_settings() {
+    let (context, _) = database_context();
+    let template = include_str!("../../templates/cloud-local/config/.env");
+    fs::write(context.work_dir().join("config/.env"), format!(
+        "{template}USER_API_HOST=127.0.0.2\nUSER_API_PORT=18080\nUSER_API_RELOAD=false\nUSER_API_LOG_LEVEL=warning\nUSER_API_WORKERS=2\n"
+    )).unwrap();
+    context.write_executable(
+        "uv",
+        r#"#!/bin/sh
+root=$(dirname "$0")/..
+env > "$root/service-env"
+"#,
+    );
+    let output = context.run_snapshot_subject(["cloud-local", "start", "user", "--foreground"]);
+    assert!(output.status.success(), "{output:?}");
+    let exports = fs::read_to_string(context.root().join("service-env")).unwrap();
+    for expected in [
+        "USER_API_HOST=127.0.0.2",
+        "USER_API_PORT=18080",
+        "USER_API_RELOAD=false",
+        "USER_API_LOG_LEVEL=warning",
+        "USER_API_WORKERS=2",
+        "USER_API_POWERTOOLS_SERVICE_NAME=user-api",
+        "USER_API_POWERTOOLS_METRICS_NAMESPACE=user-api",
+        "PROVIDER_API_HOST=0.0.0.0",
+        "PROVIDER_API_PORT=8888",
+        "PROVIDER_API_RELOAD=true",
+        "ADMIN_API_PORT=8889",
+        "USER_SIGNUP_API_PORT=8890",
+        "STORAGE_STACK=seaweedfs",
+        "DB_USERNAME=admin",
+        "DB_PASSWORD=password",
+        "STORAGE_SEAWEEDFS_ENDPOINT_URL=http://localhost:8333",
+    ] {
+        assert!(
+            exports.lines().any(|line| line == expected),
+            "missing {expected}: {exports}"
+        );
+    }
+    assert!(
+        !exports
+            .lines()
+            .any(|line| line.starts_with("STORAGE_DRIVER=")
+                || line.starts_with("POWERTOOLS_SERVICE_NAME=")
+                || line.starts_with("POWERTOOLS_METRICS_NAMESPACE="))
+    );
+}
+
+#[test]
+fn cloud_local_database_failure_does_not_report_success_or_restart() {
+    for (action, target) in [
+        ("start", "db"),
+        ("stop", "db"),
+        ("restart", "db"),
+        ("start", "all"),
+        ("restart", "all"),
+    ] {
+        let (context, _) = database_context();
+        let output = context
+            .rust_command(["cloud-local", action, target])
+            .env("INFRA_EXIT", "7")
+            .output()
+            .expect("run failing infra");
+        assert_eq!(output.status.code(), Some(1));
+        let command = if action == "start" { "start" } else { "stop" };
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            format!("infra failed\nError: failed to {command} db.\n")
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(!stdout.contains("Started db") && !stdout.contains("Stopped db"));
+        let calls = fs::read_to_string(context.root().join("infra-invocations")).unwrap();
+        assert_eq!(
+            calls
+                .lines()
+                .filter(|line| line.starts_with("args="))
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn cloud_local_database_lifecycle_requires_installed_environment() {
+    for action in ["start", "stop"] {
+        let (context, cloud) = database_context();
+        fs::remove_dir(cloud.join(".venv")).expect("remove environment fixture");
+        let output = context.run_snapshot_subject(["cloud-local", action, "db"]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
             format!(
-                "{prefix} python {}",
-                cloud.join("backend/storage/init_storage.py").display()
-            ),
-        ],
-        "all database setup commands must use the installed environment without syncing"
-    );
-    insta::assert_snapshot!("cloud_local_database_start", context.render_output(&output));
+                "Error: cannot {action} 'db': Python environment not found: {}. Install the component again to recreate it.\n",
+                cloud.join(".venv").display()
+            )
+        );
+        assert!(!context.root().join("infra-invocations").exists());
+        assert!(!cloud.join(".venv").exists());
+    }
 }
 
-#[test]
-fn cloud_local_database_start_skips_absent_storage_initialization() {
-    let (context, cloud) = database_context();
-    fs::remove_file(cloud.join("backend/storage/init_storage.py")).expect("remove storage fixture");
-
-    let output = start_database(&context);
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let prefix = format!("uv run --no-sync --project {}", cloud.display());
+/// Asserts that `action` on `service` fails with the "update cloud" error before running anything.
+fn assert_missing_entry_point(
+    context: &TestContext,
+    service: &str,
+    entry: &str,
+    action: &str,
+    case: &str,
+) {
+    let output = context.run_snapshot_subject(["cloud-local", action, service]);
+    assert_eq!(output.status.code(), Some(1), "{case}: {action} {service}");
+    assert!(output.stdout.is_empty(), "{case}: {action} {service}");
     assert_eq!(
-        uv_lines(&output),
-        [
-            format!("{prefix} alembic upgrade head"),
-            format!("{prefix} python scripts/seed.py"),
-        ]
-    );
-    let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
-    assert!(stdout.ends_with("Started db\n"), "{stdout}");
-}
-
-#[test]
-fn cloud_local_database_start_requires_installed_environment() {
-    let (context, cloud) = database_context();
-    fs::remove_dir(cloud.join(".venv")).expect("remove environment fixture");
-
-    let output = start_database(&context);
-
-    assert_eq!(output.status.code(), Some(1));
-    // Rejected before any container starts or `uv` runs.
-    assert!(
-        output.stdout.is_empty(),
-        "{}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-    assert_eq!(
-        String::from_utf8(output.stderr).expect("UTF-8 output"),
+        String::from_utf8(output.stderr).unwrap(),
         format!(
-            "Error: cannot start 'db': Python environment not found: {}. Install the component again to recreate it.\n",
-            cloud.join(".venv").display()
-        )
+            "Error: cannot {action} '{service}': the installed cloud component does not provide {entry}. Update it with 'oqtopus cloud-local update cloud'.\n"
+        ),
+        "{case}"
     );
-    assert!(!cloud.join(".venv").exists());
+    assert!(
+        !context
+            .work_dir()
+            .join(format!("pids/{service}.pid"))
+            .exists(),
+        "{case}: {action} {service}"
+    );
+}
+
+#[test]
+fn cloud_local_lifecycle_rejects_missing_entry_points() {
+    // Every entry name appears in the file, but none of them is a [project.scripts] key.
+    let mut outside_scripts = String::from("[project]\nname = 'old-cloud'\ndependencies = [\n");
+    let mut sources = String::from("[tool.uv.sources]\n");
+    for entry in CLOUD_ENTRIES
+        .map(|(_, entry)| entry)
+        .into_iter()
+        .chain(["oqtopus-cloud-infra"])
+    {
+        outside_scripts.push_str(&format!("  \"{entry}\", # {entry} = 'fixture:main'\n"));
+        sources.push_str(&format!("{entry} = {{ path = '.' }}\n"));
+    }
+    outside_scripts.push_str("]\n[project.scripts]\nunrelated = 'fixture:main'\n");
+    outside_scripts.push_str(&sources);
+
+    for (case, pyproject) in [
+        (
+            "no entry points",
+            "[project]\nname = 'old-cloud'\n".to_owned(),
+        ),
+        ("names outside [project.scripts]", outside_scripts),
+    ] {
+        for (service, entry, action) in CLOUD_ENTRIES
+            .into_iter()
+            .map(|(service, entry)| (service, entry, "start"))
+            .chain([
+                ("db", "oqtopus-cloud-infra", "start"),
+                ("db", "oqtopus-cloud-infra", "stop"),
+            ])
+        {
+            let (context, cloud) = database_context();
+            fs::write(cloud.join("pyproject.toml"), &pyproject).unwrap();
+            assert_missing_entry_point(&context, service, entry, action, case);
+            assert!(!context.root().join("infra-invocations").exists(), "{case}");
+        }
+    }
+}
+
+#[test]
+fn cloud_local_lifecycle_checks_each_entry_point_separately() {
+    // A cloud that provides only oqtopus-cloud-infra runs db but rejects every API and the worker.
+    let (context, cloud) = database_context();
+    fs::write(
+        cloud.join("pyproject.toml"),
+        "[project.scripts]\noqtopus-cloud-infra = 'fixture:main'\n",
+    )
+    .unwrap();
+    for action in ["start", "stop"] {
+        let output = context.run_snapshot_subject(["cloud-local", action, "db"]);
+        assert!(output.status.success(), "{action} db: {output:?}");
+        assert!(output.stderr.is_empty(), "{action} db");
+    }
+    for (service, entry) in CLOUD_ENTRIES {
+        assert_missing_entry_point(&context, service, entry, "start", "infra only");
+    }
+    let calls = fs::read_to_string(context.root().join("infra-invocations")).unwrap();
+    assert_eq!(
+        calls
+            .lines()
+            .filter(|line| line.starts_with("args="))
+            .collect::<Vec<_>>(),
+        ["start", "stop"].map(|action| format!(
+            "args=run --no-sync --project {} oqtopus-cloud-infra {action}",
+            cloud.display()
+        ))
+    );
+}
+
+#[test]
+fn cloud_local_database_lifecycle_resolves_branch_installations() {
+    let (context, cloud) = database_context();
+    context.create_environment(
+        EnvironmentTemplate::CloudLocal,
+        &[("cloud_local_cloud_version", "branch:main")],
+    );
+    let branch = context.work_dir().join("cloud");
+    fs::rename(&cloud, &branch).expect("move cloud to branch checkout");
+    let output = context.run_snapshot_subject(["cloud-local", "start", "db"]);
+    assert!(output.status.success(), "{output:?}");
+    let calls = fs::read_to_string(context.root().join("infra-invocations")).unwrap();
+    assert!(calls.contains(&format!(
+        "--project {} oqtopus-cloud-infra start",
+        branch.display()
+    )));
+    assert!(calls.contains(&format!("cwd={}\n", branch.join("backend").display())));
 }
 
 #[test]
@@ -484,15 +825,15 @@ fn process_services_require_installed_environment() {
         ),
         (
             EnvironmentTemplate::CloudLocal,
-            ("cloud_local_cloud_version", "v1.2.3"),
-            "cloud-local/releases/cloud-v1.2.3",
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
             &["cloud-local", "start", "worker"],
             "cannot start 'worker': ",
         ),
         (
             EnvironmentTemplate::CloudLocal,
-            ("cloud_local_cloud_version", "v1.2.3"),
-            "cloud-local/releases/cloud-v1.2.3",
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
             &["cloud-local", "start", "user"],
             "cannot start 'user': ",
         ),
@@ -556,8 +897,8 @@ fn foreground_services_propagate_exit_status_and_clean_pid() {
         ),
         (
             EnvironmentTemplate::CloudLocal,
-            ("cloud_local_cloud_version", "v1.2.3"),
-            "cloud-local/releases/cloud-v1.2.3",
+            ("cloud_local_cloud_version", "v1.8.0"),
+            "cloud-local/releases/cloud-v1.8.0",
             &["cloud-local", "start", "worker", "--foreground"],
             "worker",
         ),
@@ -571,7 +912,10 @@ fn foreground_services_propagate_exit_status_and_clean_pid() {
     ] {
         let context = TestContext::new();
         context.create_environment(template, &[binding]);
-        context.create_installed_project(release);
+        let project = context.create_installed_project(release);
+        if template == EnvironmentTemplate::CloudLocal {
+            write_cloud_entries(&project);
+        }
         context.write_executable("uv", b"#!/bin/sh\nexit 7\n");
 
         let output = context

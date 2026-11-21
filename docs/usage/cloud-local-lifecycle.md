@@ -10,22 +10,48 @@ The managed services are:
 
 | Service | Component | Management |
 |---|---|---|
-| `db` | `cloud` | Docker Compose (MySQL + MinIO) |
+| `db` | `cloud` | `oqtopus-cloud-infra` (MySQL + object storage) |
 | `worker` | `cloud` | Process (PID file) |
 | `user_signup` | `cloud` | Process (PID file) |
 | `admin` | `cloud` | Process (PID file) |
 | `provider` | `cloud` | Process (PID file) |
 | `user` | `cloud` | Process (PID file) |
 
-The `db` service starts a MySQL database and a MinIO object storage instance
-via `docker compose`. All other services are uvicorn or Python processes
-managed with PID files.
+The `db` service manages MySQL and object storage through
+`oqtopus-cloud-infra`. `STORAGE_STACK` selects SeaweedFS (the default) or MinIO.
+All other services use the cloud component's API and worker entry points and
+are managed with PID files.
 
-`oqtopus cloud-local start db` checks only the `db` container to decide
-whether to skip `docker compose up`. Database migrations and seeding always
-run afterward, even when container startup was skipped, because both are
-idempotent — this keeps the schema consistent even if the `db` container was
-previously removed and recreated without going through the CLI.
+Cloud v1.8.0 or later is required. If an installed cloud component does not
+provide the required commands, update it with `oqtopus cloud-local update cloud`.
+Existing environments also need the new settings in `config/.env`; see
+[Cloud-Local Configuration](./cloud-local-configuration.md).
+
+### Upgrading From A Cloud Before v1.8.0
+
+This CLI cannot manage the `db` containers of a cloud before v1.8.0. With such a
+cloud installed, `stop db` and `stop all` fail with the update instruction, and
+`status` reports `db: Stopped` even while its containers are running.
+Stop `db` before you upgrade the CLI:
+
+1. With the CLI version that started the environment, run
+   `oqtopus cloud-local stop all`.
+2. Upgrade the CLI, then run `oqtopus cloud-local update cloud` and update
+   `config/.env`.
+3. Run `oqtopus cloud-local start all`.
+
+Existing database and object storage data is not carried over. The first
+`start db` after the upgrade creates and seeds a new database. With
+`STORAGE_STACK=minio`, the existing MinIO volume is reused.
+
+If the CLI is already upgraded and the old containers are still running, stop
+them with Docker Compose. Use the old release's compose file and the
+environment name as the project name:
+
+```bash
+docker compose --project-name <env-name> \
+  -f <old-cloud-release>/backend/compose.yaml down
+```
 
 ## Start All Services
 
@@ -42,7 +68,8 @@ The start order is:
 5. `provider`
 6. `user`
 
-If a service is already running, `start` logs a skip message and continues.
+If a process service is already running, `start` logs a skip message and continues.
+For `db`, the cloud infra command handles already-running containers and setup.
 
 ## Start One Service
 
@@ -50,14 +77,15 @@ If a service is already running, `start` logs a skip message and continues.
 oqtopus cloud-local start user
 ```
 
-For `db`, this runs `docker compose up -d db minio mc`, waits for MySQL to
-become ready, applies Alembic migrations (`alembic upgrade head`), seeds the
-database (`scripts/seed.py`), and, if present, runs `storage/init_storage.py`
-from the installed `cloud` component.
+For `db`, this runs `oqtopus-cloud-infra start` from the installed cloud
+component's `backend/` directory. The cloud command owns container startup,
+readiness checks, database migrations, seeding, and storage initialization.
+It resumes stopped containers when starting them again.
 
-Migrations, database seeding, and storage initialization all use
-`uv run --no-sync` with the environment prepared by `install` or `update`.
-Starting services does not synchronize Python dependencies or install dev dependencies.
+The database and process commands use `uv run --no-sync` with the environment
+prepared by `install` or `update`. Starting services does not synchronize Python
+dependencies or install dev dependencies. A missing `.venv` is rejected before
+running the command.
 
 For other services, the process is started in the background and its PID
 is written to `$ENV_ROOT/pids/<service>.pid`.
@@ -80,7 +108,7 @@ oqtopus cloud-local status
 Example output:
 
 ```text
-db: Running (my-cloud-db-1, my-cloud-minio-1, my-cloud-mc-1)
+db: Running (db, seaweedfs)
 worker: Running (PID 12345)
 user_signup: Running (PID 12346)
 admin: Running (PID 12347)
@@ -88,8 +116,15 @@ provider: Running (PID 12348)
 user: Running (PID 12349)
 ```
 
-`db` shows the names of running Docker containers in the environment's Compose
-project. Other services show their PID.
+`db` covers the database and the object storage (`seaweedfs` or `minio`,
+selected by `STORAGE_STACK`) as reported by `oqtopus-cloud-infra status`, and
+shows one of the following. Other services show their PID.
+
+| Output | Meaning |
+| --- | --- |
+| `db: Running (db, seaweedfs)` | Both are running. |
+| `db: Partially running (db: running, seaweedfs: stopped)` | Only some are running. |
+| `db: Stopped` | None is running, or the state cannot be determined. |
 
 ## Stop All Services
 
@@ -106,7 +141,9 @@ The stop order is the reverse of the start order:
 5. `worker`
 6. `db`
 
-`db` is stopped via `docker compose down`, which removes the containers.
+`db` is stopped with `oqtopus-cloud-infra stop`, which stops only the database
+and object storage containers. Other containers, the network, and data volumes
+are kept.
 
 ## Stop One Service
 
@@ -115,7 +152,7 @@ oqtopus cloud-local stop user
 ```
 
 Process services receive `TERM` and are waited up to 5 seconds. `db` is
-stopped via `docker compose down`.
+stopped with `oqtopus-cloud-infra stop`.
 
 ## Restart Services
 
