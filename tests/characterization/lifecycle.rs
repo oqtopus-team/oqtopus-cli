@@ -698,39 +698,100 @@ fn cloud_local_database_lifecycle_requires_installed_environment() {
     }
 }
 
+/// Asserts that `action` on `service` fails with the "update cloud" error before running anything.
+fn assert_missing_entry_point(
+    context: &TestContext,
+    service: &str,
+    entry: &str,
+    action: &str,
+    case: &str,
+) {
+    let output = context.run_snapshot_subject(["cloud-local", action, service]);
+    assert_eq!(output.status.code(), Some(1), "{case}: {action} {service}");
+    assert!(output.stdout.is_empty(), "{case}: {action} {service}");
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        format!(
+            "Error: cannot {action} '{service}': the installed cloud component does not provide {entry}. Update it with 'oqtopus cloud-local update cloud'.\n"
+        ),
+        "{case}"
+    );
+    assert!(
+        !context
+            .work_dir()
+            .join(format!("pids/{service}.pid"))
+            .exists(),
+        "{case}: {action} {service}"
+    );
+}
+
 #[test]
 fn cloud_local_lifecycle_rejects_missing_entry_points() {
-    for (service, entry, action) in CLOUD_ENTRIES
+    // Every entry name appears in the file, but none of them is a [project.scripts] key.
+    let mut outside_scripts = String::from("[project]\nname = 'old-cloud'\ndependencies = [\n");
+    let mut sources = String::from("[tool.uv.sources]\n");
+    for entry in CLOUD_ENTRIES
+        .map(|(_, entry)| entry)
         .into_iter()
-        .map(|(service, entry)| (service, entry, "start"))
-        .chain([
-            ("db", "oqtopus-cloud-infra", "start"),
-            ("db", "oqtopus-cloud-infra", "stop"),
-        ])
+        .chain(["oqtopus-cloud-infra"])
     {
-        let (context, cloud) = database_context();
-        fs::write(
-            cloud.join("pyproject.toml"),
-            "[project]\nname = 'old-cloud'\n",
-        )
-        .unwrap();
-        let output = context.run_snapshot_subject(["cloud-local", action, service]);
-        assert_eq!(output.status.code(), Some(1));
-        assert!(output.stdout.is_empty());
-        assert_eq!(
-            String::from_utf8(output.stderr).unwrap(),
-            format!(
-                "Error: cannot {action} '{service}': the installed cloud component does not provide {entry}. Update it with 'oqtopus cloud-local update cloud'.\n"
-            )
-        );
-        assert!(!context.root().join("infra-invocations").exists());
-        assert!(
-            !context
-                .work_dir()
-                .join(format!("pids/{service}.pid"))
-                .exists()
-        );
+        outside_scripts.push_str(&format!("  \"{entry}\", # {entry} = 'fixture:main'\n"));
+        sources.push_str(&format!("{entry} = {{ path = '.' }}\n"));
     }
+    outside_scripts.push_str("]\n[project.scripts]\nunrelated = 'fixture:main'\n");
+    outside_scripts.push_str(&sources);
+
+    for (case, pyproject) in [
+        (
+            "no entry points",
+            "[project]\nname = 'old-cloud'\n".to_owned(),
+        ),
+        ("names outside [project.scripts]", outside_scripts),
+    ] {
+        for (service, entry, action) in CLOUD_ENTRIES
+            .into_iter()
+            .map(|(service, entry)| (service, entry, "start"))
+            .chain([
+                ("db", "oqtopus-cloud-infra", "start"),
+                ("db", "oqtopus-cloud-infra", "stop"),
+            ])
+        {
+            let (context, cloud) = database_context();
+            fs::write(cloud.join("pyproject.toml"), &pyproject).unwrap();
+            assert_missing_entry_point(&context, service, entry, action, case);
+            assert!(!context.root().join("infra-invocations").exists(), "{case}");
+        }
+    }
+}
+
+#[test]
+fn cloud_local_lifecycle_checks_each_entry_point_separately() {
+    // A cloud that provides only oqtopus-cloud-infra runs db but rejects every API and the worker.
+    let (context, cloud) = database_context();
+    fs::write(
+        cloud.join("pyproject.toml"),
+        "[project.scripts]\noqtopus-cloud-infra = 'fixture:main'\n",
+    )
+    .unwrap();
+    for action in ["start", "stop"] {
+        let output = context.run_snapshot_subject(["cloud-local", action, "db"]);
+        assert!(output.status.success(), "{action} db: {output:?}");
+        assert!(output.stderr.is_empty(), "{action} db");
+    }
+    for (service, entry) in CLOUD_ENTRIES {
+        assert_missing_entry_point(&context, service, entry, "start", "infra only");
+    }
+    let calls = fs::read_to_string(context.root().join("infra-invocations")).unwrap();
+    assert_eq!(
+        calls
+            .lines()
+            .filter(|line| line.starts_with("args="))
+            .collect::<Vec<_>>(),
+        ["start", "stop"].map(|action| format!(
+            "args=run --no-sync --project {} oqtopus-cloud-infra {action}",
+            cloud.display()
+        ))
+    );
 }
 
 #[test]

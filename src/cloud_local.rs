@@ -168,7 +168,7 @@ fn require_cloud_entry(
     action: &str,
 ) -> Result<(), String> {
     if fs::read_to_string(cloud.join("pyproject.toml"))
-        .is_ok_and(|pyproject| pyproject.contains(entry))
+        .is_ok_and(|pyproject| declares_script(&pyproject, entry))
     {
         Ok(())
     } else {
@@ -176,6 +176,46 @@ fn require_cloud_entry(
             "cannot {action} '{service}': the installed cloud component does not provide {entry}. Update it with 'oqtopus cloud-local update cloud'."
         ))
     }
+}
+
+/// Reports whether `entry` is a key of the `[project.scripts]` table.
+///
+/// Only the table-header form that the cloud's pyproject uses is recognized; a name that appears
+/// anywhere else (a comment, a dependency, another table) does not count. Unrecognized TOML
+/// spellings, such as an inline `scripts = { ... }` table, are rejected rather than guessed at,
+/// which surfaces as the "update cloud" error instead of a failing `uv run`.
+/// The input is assumed to be valid TOML, as `uv sync` at install time has already parsed it.
+fn declares_script(pyproject: &str, entry: &str) -> bool {
+    // A minimal line scan to avoid a TOML dependency for one lookup. Replace it with a real
+    // TOML parser if the crate ever depends on one.
+    let mut in_scripts = false;
+    for line in pyproject.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_scripts = line
+                .strip_prefix('[')
+                .and_then(|rest| rest.split_once(']'))
+                .is_some_and(|(header, _)| {
+                    !header.starts_with('[') && header.trim() == "project.scripts"
+                });
+            continue;
+        }
+        if !in_scripts {
+            continue;
+        }
+        let Some((key, _)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let key = ['"', '\'']
+            .iter()
+            .find_map(|quote| key.strip_prefix(*quote)?.strip_suffix(*quote))
+            .unwrap_or(key);
+        if key == entry {
+            return true;
+        }
+    }
+    false
 }
 
 /// Parses one `<service>: running|stopped` row. Any other line, such as a diagnostic, is skipped.
@@ -262,5 +302,41 @@ mod tests {
                 running: true
             })
         );
+    }
+
+    #[test]
+    fn script_keys_are_matched_exactly_inside_project_scripts() {
+        let pyproject = "[project]\r\nname = \"oqtopus-cloud\"\r\n\r\n[ project.scripts ] # entry points\r\n# oqtopus-cloud-admin-api = \"disabled\"\r\noqtopus-cloud-infra = \"a:main\"\r\n\"oqtopus-cloud-worker\" = \"b:main\"\r\n'oqtopus-cloud-user-api'='c:main'\r\n";
+        for entry in [
+            "oqtopus-cloud-infra",
+            "oqtopus-cloud-worker",
+            "oqtopus-cloud-user-api",
+        ] {
+            assert!(declares_script(pyproject, entry), "{entry}");
+        }
+        for entry in [
+            "oqtopus-cloud-admin-api",
+            "oqtopus-cloud",
+            "oqtopus-cloud-inf",
+        ] {
+            assert!(!declares_script(pyproject, entry), "{entry}");
+        }
+    }
+
+    #[test]
+    fn names_outside_project_scripts_are_not_entry_points() {
+        for pyproject in [
+            "# oqtopus-cloud-infra\n[project]\nname = 'oqtopus-cloud-infra'\n",
+            "[project]\ndependencies = [\n  \"oqtopus-cloud-infra-sdk\",\n  \"oqtopus-cloud-infra\",\n]\n",
+            "[project.scripts]\nother = 'a:main'\n[tool.uv.sources]\noqtopus-cloud-infra = { path = '.' }\n",
+            "[project.gui-scripts]\noqtopus-cloud-infra = 'a:main'\n",
+            "[[project.scripts]]\noqtopus-cloud-infra = 'a:main'\n",
+            "[project]\nscripts = { oqtopus-cloud-infra = 'a:main' }\n",
+        ] {
+            assert!(
+                !declares_script(pyproject, "oqtopus-cloud-infra"),
+                "{pyproject:?}"
+            );
+        }
     }
 }
